@@ -4,6 +4,14 @@ import {
   advanceUnitMovement,
 } from "./engine/movement.js";
 
+import {
+  DETECTION_STAGES,
+  loadScenario,
+  getPlayerUnit,
+  updateDetection,
+  isUnitVisible,
+} from "./engine/scenarioRuntime.js";
+
 const HEX_RADIUS = 28;
 const MAP_COLUMNS = 18;
 const MAP_ROWS = 18;
@@ -17,7 +25,6 @@ const TERRAIN_TYPES = {
     movementCost: 1,
     concealment: 5,
     cover: 0,
-    blocksSight: false,
   },
 
   grass: {
@@ -28,7 +35,6 @@ const TERRAIN_TYPES = {
     movementCost: 1,
     concealment: 10,
     cover: 0,
-    blocksSight: false,
   },
 
   forest: {
@@ -39,7 +45,6 @@ const TERRAIN_TYPES = {
     movementCost: 2,
     concealment: 70,
     cover: 25,
-    blocksSight: true,
   },
 
   ridge: {
@@ -50,7 +55,6 @@ const TERRAIN_TYPES = {
     movementCost: 2,
     concealment: 15,
     cover: 45,
-    blocksSight: true,
   },
 
   road: {
@@ -61,7 +65,6 @@ const TERRAIN_TYPES = {
     movementCost: 0.6,
     concealment: 0,
     cover: 0,
-    blocksSight: false,
   },
 
   water: {
@@ -72,19 +75,24 @@ const TERRAIN_TYPES = {
     movementCost: Infinity,
     concealment: 0,
     cover: 0,
-    blocksSight: false,
   },
 };
+
+const runtimeScenario = loadScenario();
+const playerUnit = getPlayerUnit(runtimeScenario);
 
 const state = {
   turn: 1,
   activeScreen: "menu",
   activeCategory: null,
   selectedCommand: null,
-  selectedUnitId: "P0",
+  selectedUnitId: playerUnit?.id ?? null,
   selectedHex: null,
   difficulty: "standard",
   developerMode: false,
+
+  units: runtimeScenario.units,
+  terrain: new Map(),
 
   camera: {
     x: 0,
@@ -98,52 +106,6 @@ const state = {
     downY: 0,
     moved: false,
   },
-
-  units: [
-    {
-      id: "P0",
-      side: "friendly",
-      type: "tank",
-      name: "P0 자차",
-      model: "아군 전차",
-      column: 0,
-      row: 0,
-
-      hullDirection: -Math.PI / 6,
-      turretDirection: -Math.PI / 6,
-      direction: -Math.PI / 6,
-
-      condition: "정상",
-      command: "대기",
-
-      destination: null,
-      plannedPath: [],
-      movementHistory: [],
-    },
-
-    {
-      id: "P1",
-      side: "friendly",
-      type: "tank",
-      name: "P1 1호차",
-      model: "아군 전차",
-      column: -3,
-      row: 2,
-
-      hullDirection: 0,
-      turretDirection: 0,
-      direction: 0,
-
-      condition: "정상",
-      command: "대기",
-
-      destination: null,
-      plannedPath: [],
-      movementHistory: [],
-    },
-  ],
-
-  terrain: new Map(),
 };
 
 const commandGroups = {
@@ -244,25 +206,38 @@ const movementCommandIds = new Set([
 ]);
 
 const elements = {
-  menuScreen: document.querySelector("#menu-screen"),
-  battleScreen: document.querySelector("#battle-screen"),
+  menuScreen: document.querySelector(
+    "#menu-screen",
+  ),
 
-  turnLabel: document.querySelector("#turn-label"),
+  battleScreen: document.querySelector(
+    "#battle-screen",
+  ),
+
+  turnLabel: document.querySelector(
+    "#turn-label",
+  ),
+
   selectedUnitLabel: document.querySelector(
     "#selected-unit-label",
   ),
+
   currentCommandLabel: document.querySelector(
     "#current-command-label",
   ),
+
   unitConditionLabel: document.querySelector(
     "#unit-condition-label",
   ),
 
-  commandOptions: document.querySelector("#command-options"),
+  commandOptions: document.querySelector(
+    "#command-options",
+  ),
 
   settingsDialog: document.querySelector(
     "#settings-dialog",
   ),
+
   projectInfoDialog: document.querySelector(
     "#project-info-dialog",
   ),
@@ -270,22 +245,33 @@ const elements = {
   difficultySelect: document.querySelector(
     "#difficulty-select",
   ),
+
   developerModeToggle: document.querySelector(
     "#developer-mode-toggle",
   ),
 
-  canvas: document.querySelector("#battle-map"),
-  mapMessage: document.querySelector("#map-message"),
+  canvas: document.querySelector(
+    "#battle-map",
+  ),
+
+  mapMessage: document.querySelector(
+    "#map-message",
+  ),
 };
 
 if (!elements.canvas) {
-  throw new Error("battle-map Canvas를 찾을 수 없습니다.");
+  throw new Error(
+    "battle-map Canvas를 찾을 수 없습니다.",
+  );
 }
 
-const context = elements.canvas.getContext("2d");
+const context =
+  elements.canvas.getContext("2d");
 
 if (!context) {
-  throw new Error("Canvas 2D Context를 생성할 수 없습니다.");
+  throw new Error(
+    "Canvas 2D Context를 생성할 수 없습니다.",
+  );
 }
 
 function terrainKey(column, row) {
@@ -294,8 +280,10 @@ function terrainKey(column, row) {
 
 function seededValue(column, row) {
   const value =
-    Math.sin(column * 12.9898 + row * 78.233) *
-    43758.5453;
+    Math.sin(
+      column * 12.9898 +
+        row * 78.233,
+    ) * 43758.5453;
 
   return value - Math.floor(value);
 }
@@ -313,7 +301,11 @@ function createTerrain() {
       column <= MAP_COLUMNS;
       column += 1
     ) {
-      const random = seededValue(column, row);
+      const random = seededValue(
+        column,
+        row,
+      );
+
       let type = "open";
 
       if (
@@ -355,26 +347,19 @@ function createTerrain() {
     }
   }
 
-  const guaranteedOpenHexes = [
-    [0, 0],
-    [-1, 0],
-    [1, 0],
-    [0, 1],
-    [0, -1],
-    [-3, 2],
-  ];
-
-  guaranteedOpenHexes.forEach(
-    ([column, row]) => {
-      const terrain = state.terrain.get(
-        terrainKey(column, row),
+  state.units.forEach((unit) => {
+    const terrain =
+      state.terrain.get(
+        terrainKey(
+          unit.column,
+          unit.row,
+        ),
       );
 
-      if (terrain) {
-        terrain.type = "open";
-      }
-    },
-  );
+    if (terrain) {
+      terrain.type = "open";
+    }
+  });
 }
 
 function getSelectedUnit() {
@@ -402,16 +387,21 @@ function updateSelectedUnitSummary() {
 }
 
 function setMapMessage(message) {
-  elements.mapMessage.textContent = message;
+  elements.mapMessage.textContent =
+    message;
 }
 
 function showScreen(screenName) {
-  const showMenu = screenName === "menu";
+  const showMenu =
+    screenName === "menu";
 
   state.activeScreen = screenName;
 
-  elements.menuScreen.hidden = !showMenu;
-  elements.battleScreen.hidden = showMenu;
+  elements.menuScreen.hidden =
+    !showMenu;
+
+  elements.battleScreen.hidden =
+    showMenu;
 
   if (!showMenu) {
     requestAnimationFrame(() => {
@@ -424,7 +414,7 @@ function showScreen(screenName) {
 }
 
 function setInterfaceText() {
-  const categoryLabels = {
+  const labels = {
     observation: "감시 및 정찰",
     movement: "기동",
     combat: "사격",
@@ -440,18 +430,18 @@ function setInterfaceText() {
         button.dataset.commandCategory;
 
       button.textContent =
-        categoryLabels[category] ?? category;
+        labels[category] ?? category;
     });
 }
 
 function renderCommandOptions(category) {
-  const commands = commandGroups[category];
-
   state.activeCategory = category;
   state.selectedCommand = null;
 
   document
-    .querySelectorAll(".command-category")
+    .querySelectorAll(
+      ".command-category",
+    )
     .forEach((button) => {
       button.classList.toggle(
         "is-active",
@@ -462,30 +452,33 @@ function renderCommandOptions(category) {
 
   elements.commandOptions.replaceChildren();
 
-  if (!commands) {
-    const message =
-      document.createElement("p");
-
-    message.textContent =
-      "사용 가능한 명령이 없습니다.";
-
-    elements.commandOptions.append(message);
-    return;
-  }
+  const commands =
+    commandGroups[category] ?? [];
 
   commands.forEach((command) => {
     const button =
       document.createElement("button");
 
     button.type = "button";
-    button.className = "command-option";
-    button.textContent = command.label;
+    button.className =
+      "command-option";
 
-    button.addEventListener("click", () => {
-      selectCommand(command, button);
-    });
+    button.textContent =
+      command.label;
 
-    elements.commandOptions.append(button);
+    button.addEventListener(
+      "click",
+      () => {
+        selectCommand(
+          command,
+          button,
+        );
+      },
+    );
+
+    elements.commandOptions.append(
+      button,
+    );
   });
 }
 
@@ -495,17 +488,19 @@ function selectCommand(
 ) {
   const unit = getSelectedUnit();
 
-  if (!unit) {
-    setMapMessage(
-      "선택된 아군 객체가 없습니다.",
-    );
+  if (
+    !unit ||
+    unit.side !== "friendly"
+  ) {
     return;
   }
 
   state.selectedCommand = command;
 
   document
-    .querySelectorAll(".command-option")
+    .querySelectorAll(
+      ".command-option",
+    )
     .forEach((button) => {
       button.classList.toggle(
         "is-selected",
@@ -513,73 +508,67 @@ function selectCommand(
       );
     });
 
-  if (command.id === "cancel-movement") {
+  if (
+    command.id ===
+    "cancel-movement"
+  ) {
     cancelUnitMovement(unit);
 
     state.selectedCommand = null;
 
     updateSelectedUnitSummary();
+
     setMapMessage(
       `${unit.name}의 이동 명령을 취소했습니다.`,
     );
+
     renderMap();
     return;
   }
 
-  if (command.id === "cease-fire") {
-    unit.command = "사격 그만";
+  if (
+    command.id === "cease-fire" ||
+    command.id === "vehicle-smoke" ||
+    !command.needsTarget
+  ) {
+    unit.command = command.label;
 
     updateSelectedUnitSummary();
+
     setMapMessage(
-      "승무원에게 사격 그만을 명령했습니다.",
+      `${command.label} 명령이 예약되었습니다.`,
     );
+
     return;
   }
 
-  if (command.id === "vehicle-smoke") {
-    unit.command = "자체연막";
-
-    updateSelectedUnitSummary();
-    setMapMessage(
-      "자체연막 명령이 예약되었습니다.",
-    );
-    return;
-  }
-
-  if (command.needsTarget) {
-    setMapMessage(
-      `${command.label}: 지도에서 목표 육각형을 선택하세요.`,
-    );
-    return;
-  }
-
-  unit.command = command.label;
-
-  updateSelectedUnitSummary();
   setMapMessage(
-    `${command.label} 명령이 예약되었습니다.`,
+    `${command.label}: 지도에서 목표 육각형을 선택하세요.`,
   );
 }
 
 function hexToWorld(column, row) {
-  const horizontalSpacing =
+  const horizontal =
     Math.sqrt(3) * HEX_RADIUS;
-
-  const verticalSpacing =
-    HEX_RADIUS * 1.5;
 
   return {
     x:
-      column * horizontalSpacing +
+      column * horizontal +
       (row % 2 === 0
         ? 0
-        : horizontalSpacing / 2),
+        : horizontal / 2),
 
-    y: row * verticalSpacing,
+    y:
+      row *
+      HEX_RADIUS *
+      1.5,
   };
 }
 
-function worldToHex(worldX, worldY) {
+function worldToHex(
+  worldX,
+  worldY,
+) {
   let nearest = null;
   let nearestDistance = Infinity;
 
@@ -603,21 +592,29 @@ function worldToHex(worldX, worldY) {
         worldY - point.y,
       );
 
-      if (distance < nearestDistance) {
+      if (
+        distance <
+        nearestDistance
+      ) {
         nearestDistance = distance;
-        nearest = { column, row };
+
+        nearest = {
+          column,
+          row,
+        };
       }
     }
   }
 
-  if (nearestDistance > HEX_RADIUS) {
-    return null;
-  }
-
-  return nearest;
+  return nearestDistance <= HEX_RADIUS
+    ? nearest
+    : null;
 }
 
-function screenToWorld(screenX, screenY) {
+function screenToWorld(
+  screenX,
+  screenY,
+) {
   return {
     x:
       (screenX - state.camera.x) /
@@ -630,22 +627,39 @@ function screenToWorld(screenX, screenY) {
 }
 
 function selectUnit(unit) {
+  if (
+    unit.side === "enemy" &&
+    !state.developerMode &&
+    !unit.visible
+  ) {
+    return;
+  }
+
   state.selectedUnitId = unit.id;
   state.selectedCommand = null;
 
   updateSelectedUnitSummary();
 
+  const detectionText =
+    unit.side === "enemy"
+      ? `, 탐지단계 ${unit.detectionStage}`
+      : "";
+
   setMapMessage(
-    `${unit.name} 선택 — ${unit.model}, 상태 ${unit.condition}`,
+    `${unit.name} 선택 — ${unit.model}${detectionText}`,
   );
 
   renderMap();
 }
 
-function getMovementCost(column, row) {
-  const terrain = state.terrain.get(
-    terrainKey(column, row),
-  );
+function getMovementCost(
+  column,
+  row,
+) {
+  const terrain =
+    state.terrain.get(
+      terrainKey(column, row),
+    );
 
   if (!terrain) {
     return Infinity;
@@ -656,10 +670,48 @@ function getMovementCost(column, row) {
   ].movementCost;
 }
 
-function selectHex(hex) {
-  const terrain = state.terrain.get(
-    terrainKey(hex.column, hex.row),
+function getHexNeighbors(
+  column,
+  row,
+) {
+  const directions =
+    row % 2 === 0
+      ? [
+          [-1, 0],
+          [1, 0],
+          [-1, -1],
+          [0, -1],
+          [-1, 1],
+          [0, 1],
+        ]
+      : [
+          [-1, 0],
+          [1, 0],
+          [0, -1],
+          [1, -1],
+          [0, 1],
+          [1, 1],
+        ];
+
+  return directions.map(
+    ([columnOffset, rowOffset]) => ({
+      column:
+        column + columnOffset,
+
+      row:
+        row + rowOffset,
+    }),
   );
+}
+
+function selectHex(hex) {
+  const terrain =
+    state.terrain.get(
+      terrainKey(
+        hex.column,
+        hex.row,
+      ),
+    );
 
   if (!terrain) {
     return;
@@ -667,52 +719,53 @@ function selectHex(hex) {
 
   state.selectedHex = hex;
 
-  const terrainType =
-    TERRAIN_TYPES[terrain.type];
-
   const unit = getSelectedUnit();
-  const command = state.selectedCommand;
+  const command =
+    state.selectedCommand;
 
-  if (!unit) {
-    setMapMessage(
-      "선택된 아군 객체가 없습니다.",
-    );
+  if (
+    !unit ||
+    unit.side !== "friendly"
+  ) {
     return;
   }
 
   if (
     command?.needsTarget &&
-    movementCommandIds.has(command.id)
+    movementCommandIds.has(
+      command.id,
+    )
   ) {
-    const result = planUnitMovement({
-      unit,
+    const result =
+      planUnitMovement({
+        unit,
 
-      destination: {
-        column: hex.column,
-        row: hex.row,
-      },
+        destination: {
+          column: hex.column,
+          row: hex.row,
+        },
 
-      getNeighbors: getHexNeighbors,
-      getMovementCost,
-    });
+        getNeighbors:
+          getHexNeighbors,
+
+        getMovementCost,
+      });
 
     if (!result.success) {
       setMapMessage(
         result.reason ??
           "이동 가능한 경로가 없습니다.",
       );
+    } else {
+      unit.command =
+        command.label;
 
-      renderMap();
-      return;
+      updateSelectedUnitSummary();
+
+      setMapMessage(
+        `${command.label}: ${unit.plannedPath.length}개 헥스 이동로 설정`,
+      );
     }
-
-    unit.command = command.label;
-
-    updateSelectedUnitSummary();
-
-    setMapMessage(
-      `${command.label}: ${unit.plannedPath.length}개 헥스 이동로 설정`,
-    );
 
     renderMap();
     return;
@@ -720,7 +773,8 @@ function selectHex(hex) {
 
   if (command?.needsTarget) {
     unit.command =
-      `${command.label} (${hex.column}, ${hex.row})`;
+      `${command.label} ` +
+      `(${hex.column}, ${hex.row})`;
 
     updateSelectedUnitSummary();
 
@@ -732,7 +786,10 @@ function selectHex(hex) {
     return;
   }
 
-  const movementCostText =
+  const terrainType =
+    TERRAIN_TYPES[terrain.type];
+
+  const movementCost =
     Number.isFinite(
       terrainType.movementCost,
     )
@@ -742,7 +799,7 @@ function selectHex(hex) {
   setMapMessage(
     `${terrainType.name} | ` +
       `고도 ${terrain.elevation}m | ` +
-      `이동비용 ${movementCostText} | ` +
+      `이동비용 ${movementCost} | ` +
       `은폐 ${terrainType.concealment}% | ` +
       `엄폐 ${terrainType.cover}%`,
   );
@@ -750,20 +807,29 @@ function selectHex(hex) {
   renderMap();
 }
 
-function handleMapTap(clientX, clientY) {
+function handleMapTap(
+  clientX,
+  clientY,
+) {
   const rect =
     elements.canvas.getBoundingClientRect();
 
-  const screenX = clientX - rect.left;
-  const screenY = clientY - rect.top;
-
   const world = screenToWorld(
-    screenX,
-    screenY,
+    clientX - rect.left,
+    clientY - rect.top,
   );
 
   const unit = state.units.find(
     (candidate) => {
+      if (
+        !isUnitVisible(
+          candidate,
+          state.developerMode,
+        )
+      ) {
+        return false;
+      }
+
       const point = hexToWorld(
         candidate.column,
         candidate.row,
@@ -793,50 +859,32 @@ function handleMapTap(clientX, clientY) {
   }
 }
 
-function getHexNeighbors(column, row) {
-  const evenRow = row % 2 === 0;
-
-  const directions = evenRow
-    ? [
-        [-1, 0],
-        [1, 0],
-        [-1, -1],
-        [0, -1],
-        [-1, 1],
-        [0, 1],
-      ]
-    : [
-        [-1, 0],
-        [1, 0],
-        [0, -1],
-        [1, -1],
-        [0, 1],
-        [1, 1],
-      ];
-
-  return directions.map(
-    ([columnOffset, rowOffset]) => ({
-      column: column + columnOffset,
-      row: row + rowOffset,
-    }),
-  );
-}
-
 function executeTurn() {
-  const selectedUnit = getSelectedUnit();
+  const selectedUnit =
+    getSelectedUnit();
 
-  const executedCommand =
-    selectedUnit?.command ?? "대기";
+  const command =
+    selectedUnit?.command ??
+    "대기";
 
-  state.units.forEach((unit) => {
-    advanceUnitMovement({
-      unit,
-      turn: state.turn,
-      hexToWorld,
+  state.units
+    .filter(
+      (unit) =>
+        unit.side === "friendly",
+    )
+    .forEach((unit) => {
+      advanceUnitMovement({
+        unit,
+        turn: state.turn,
+        hexToWorld,
+      });
     });
-  });
 
   state.turn += 1;
+
+  updateDetection(
+    runtimeScenario,
+  );
 
   elements.turnLabel.textContent =
     `TURN ${state.turn}`;
@@ -844,7 +892,9 @@ function executeTurn() {
   state.selectedCommand = null;
 
   document
-    .querySelectorAll(".command-option")
+    .querySelectorAll(
+      ".command-option",
+    )
     .forEach((button) => {
       button.classList.remove(
         "is-selected",
@@ -853,8 +903,17 @@ function executeTurn() {
 
   updateSelectedUnitSummary();
 
+  const contacts =
+    state.units.filter(
+      (unit) =>
+        unit.side === "enemy" &&
+        unit.visible,
+    ).length;
+
   setMapMessage(
-    `TURN ${state.turn - 1}: ${executedCommand} 처리`,
+    `TURN ${state.turn - 1}: ` +
+      `${command} 처리 | ` +
+      `적 접촉 ${contacts}`,
   );
 
   renderMap();
@@ -864,26 +923,32 @@ function resizeCanvas() {
   const rect =
     elements.canvas.getBoundingClientRect();
 
-  const pixelRatio = Math.min(
+  const ratio = Math.min(
     window.devicePixelRatio || 1,
     2,
   );
 
-  elements.canvas.width = Math.max(
-    1,
-    Math.floor(rect.width * pixelRatio),
-  );
+  elements.canvas.width =
+    Math.max(
+      1,
+      Math.floor(
+        rect.width * ratio,
+      ),
+    );
 
-  elements.canvas.height = Math.max(
-    1,
-    Math.floor(rect.height * pixelRatio),
-  );
+  elements.canvas.height =
+    Math.max(
+      1,
+      Math.floor(
+        rect.height * ratio,
+      ),
+    );
 
   context.setTransform(
-    pixelRatio,
+    ratio,
     0,
     0,
-    pixelRatio,
+    ratio,
     0,
     0,
   );
@@ -893,7 +958,9 @@ function centerCamera() {
   const rect =
     elements.canvas.getBoundingClientRect();
 
-  const unit = getSelectedUnit();
+  const unit =
+    getSelectedUnit() ??
+    playerUnit;
 
   if (!unit) {
     return;
@@ -906,21 +973,25 @@ function centerCamera() {
 
   state.camera.x =
     rect.width / 2 -
-    point.x * state.camera.zoom;
+    point.x *
+      state.camera.zoom;
 
   state.camera.y =
     rect.height / 2 -
-    point.y * state.camera.zoom;
+    point.y *
+      state.camera.zoom;
 }
 
 function changeZoom(amount) {
-  state.camera.zoom = Math.min(
-    1.8,
-    Math.max(
-      0.55,
-      state.camera.zoom + amount,
-    ),
-  );
+  state.camera.zoom =
+    Math.min(
+      1.8,
+      Math.max(
+        0.55,
+        state.camera.zoom +
+          amount,
+      ),
+    );
 
   centerCamera();
 
@@ -934,8 +1005,8 @@ function changeZoom(amount) {
 }
 
 function drawHexagon(
-  centerX,
-  centerY,
+  x,
+  y,
   radius,
   fill,
   stroke,
@@ -952,18 +1023,26 @@ function drawHexagon(
       (Math.PI / 3) * side -
       Math.PI / 6;
 
-    const x =
-      centerX +
-      Math.cos(angle) * radius;
+    const pointX =
+      x +
+      Math.cos(angle) *
+        radius;
 
-    const y =
-      centerY +
-      Math.sin(angle) * radius;
+    const pointY =
+      y +
+      Math.sin(angle) *
+        radius;
 
     if (side === 0) {
-      context.moveTo(x, y);
+      context.moveTo(
+        pointX,
+        pointY,
+      );
     } else {
-      context.lineTo(x, y);
+      context.lineTo(
+        pointX,
+        pointY,
+      );
     }
   }
 
@@ -986,7 +1065,9 @@ function drawTerrainSymbol(
   context.fillStyle =
     "rgba(230, 239, 229, 0.58)";
 
-  context.font = "600 12px system-ui";
+  context.font =
+    "600 12px system-ui";
+
   context.textAlign = "center";
 
   if (terrainType.symbol) {
@@ -998,8 +1079,11 @@ function drawTerrainSymbol(
   }
 
   if (state.developerMode) {
-    context.fillStyle = "#e4d49c";
-    context.font = "9px monospace";
+    context.fillStyle =
+      "#e4d49c";
+
+    context.font =
+      "9px monospace";
 
     context.fillText(
       `${elevation}m`,
@@ -1009,80 +1093,85 @@ function drawTerrainSymbol(
   }
 }
 
-function drawTank(unit, selected) {
-  const point = hexToWorld(
-    unit.column,
-    unit.row,
+function drawSelection(point) {
+  context.beginPath();
+
+  context.arc(
+    point.x,
+    point.y,
+    25,
+    0,
+    Math.PI * 2,
   );
 
-  if (selected) {
-    context.save();
+  context.fillStyle =
+    "rgba(198, 225, 181, 0.2)";
 
-    context.beginPath();
-    context.arc(
-      point.x,
-      point.y,
-      25,
-      0,
-      Math.PI * 2,
-    );
+  context.fill();
 
-    context.fillStyle =
-      "rgba(198, 225, 181, 0.2)";
+  context.strokeStyle =
+    "#c5dfb5";
 
-    context.fill();
+  context.lineWidth = 2;
+  context.stroke();
+}
 
-    context.strokeStyle = "#c5dfb5";
-    context.lineWidth = 2;
-    context.stroke();
-
-    context.restore();
-  }
-
-  // 차체
+function drawTankIcon(
+  unit,
+  point,
+) {
   context.save();
 
-  context.translate(point.x, point.y);
-  context.rotate(
-    unit.hullDirection ??
-      unit.direction ??
-      0,
+  context.translate(
+    point.x,
+    point.y,
   );
 
-  context.fillStyle = "#73957e";
-  context.strokeStyle = "#e0f4e5";
+  context.rotate(
+    unit.hullDirection ?? 0,
+  );
+
+  context.fillStyle =
+    unit.side === "friendly"
+      ? "#73957e"
+      : "#a35f59";
+
+  context.strokeStyle =
+    "#edf4ef";
+
   context.lineWidth = 1.5;
 
-  context.fillRect(-14, -8, 28, 16);
-  context.strokeRect(-14, -8, 28, 16);
+  context.fillRect(
+    -14,
+    -8,
+    28,
+    16,
+  );
 
-  context.beginPath();
-  context.moveTo(-12, -11);
-  context.lineTo(12, -11);
-  context.stroke();
-
-  context.beginPath();
-  context.moveTo(-12, 11);
-  context.lineTo(12, 11);
-  context.stroke();
+  context.strokeRect(
+    -14,
+    -8,
+    28,
+    16,
+  );
 
   context.restore();
 
-  // 포탑
   context.save();
 
-  context.translate(point.x, point.y);
+  context.translate(
+    point.x,
+    point.y,
+  );
+
   context.rotate(
     unit.turretDirection ??
       unit.hullDirection ??
       0,
   );
 
-  context.fillStyle = "#9ec2aa";
-  context.strokeStyle = "#edf4ef";
-  context.lineWidth = 1.5;
-
   context.beginPath();
+
   context.arc(
     0,
     0,
@@ -1090,22 +1179,197 @@ function drawTank(unit, selected) {
     0,
     Math.PI * 2,
   );
+
+  context.fillStyle =
+    "#9ec2aa";
+
   context.fill();
   context.stroke();
 
   context.beginPath();
+
   context.moveTo(4, 0);
   context.lineTo(21, 0);
   context.stroke();
 
   context.restore();
+}
 
-  context.fillStyle = "#edf4ef";
-  context.font = "800 11px system-ui";
-  context.textAlign = "center";
+function drawObserverIcon(point) {
+  context.strokeStyle =
+    "#f0b58f";
+
+  context.fillStyle =
+    "rgba(145, 70, 45, 0.9)";
+
+  context.lineWidth = 2;
+
+  context.beginPath();
+
+  context.arc(
+    point.x,
+    point.y,
+    10,
+    0,
+    Math.PI * 2,
+  );
+
+  context.fill();
+  context.stroke();
+
+  context.beginPath();
+
+  context.moveTo(
+    point.x - 14,
+    point.y,
+  );
+
+  context.lineTo(
+    point.x + 14,
+    point.y,
+  );
+
+  context.moveTo(
+    point.x,
+    point.y - 14,
+  );
+
+  context.lineTo(
+    point.x,
+    point.y + 14,
+  );
+
+  context.stroke();
+}
+
+function drawAtgmIcon(point) {
+  context.fillStyle =
+    "#9d514e";
+
+  context.strokeStyle =
+    "#ffd1c6";
+
+  context.lineWidth = 2;
+
+  context.beginPath();
+
+  context.moveTo(
+    point.x,
+    point.y - 13,
+  );
+
+  context.lineTo(
+    point.x + 13,
+    point.y + 10,
+  );
+
+  context.lineTo(
+    point.x - 13,
+    point.y + 10,
+  );
+
+  context.closePath();
+  context.fill();
+  context.stroke();
+
+  context.beginPath();
+
+  context.moveTo(
+    point.x - 8,
+    point.y,
+  );
+
+  context.lineTo(
+    point.x + 13,
+    point.y,
+  );
+
+  context.stroke();
+}
+
+function drawContactIcon(point) {
+  context.fillStyle =
+    "#d8a85f";
+
+  context.font =
+    "900 24px system-ui";
+
+  context.textAlign =
+    "center";
 
   context.fillText(
-    unit.id,
+    "?",
+    point.x,
+    point.y + 8,
+  );
+}
+
+function drawUnit(unit) {
+  if (
+    !isUnitVisible(
+      unit,
+      state.developerMode,
+    )
+  ) {
+    return;
+  }
+
+  const point = hexToWorld(
+    unit.column,
+    unit.row,
+  );
+
+  if (
+    unit.id ===
+    state.selectedUnitId
+  ) {
+    drawSelection(point);
+  }
+
+  if (
+    unit.side === "enemy" &&
+    !state.developerMode &&
+    unit.detectionStage ===
+      DETECTION_STAGES.CONTACT
+  ) {
+    drawContactIcon(point);
+  } else if (
+    unit.type ===
+    "artillery-observer"
+  ) {
+    drawObserverIcon(point);
+  } else if (
+    unit.type ===
+    "atgm-team"
+  ) {
+    drawAtgmIcon(point);
+  } else {
+    drawTankIcon(
+      unit,
+      point,
+    );
+  }
+
+  context.fillStyle =
+    unit.side === "friendly"
+      ? "#edf4ef"
+      : "#ffd2c8";
+
+  context.font =
+    "800 10px system-ui";
+
+  context.textAlign =
+    "center";
+
+  const label =
+    unit.side === "enemy" &&
+    !state.developerMode &&
+    !unit.identified
+      ? "미확인"
+      : unit.id;
+
+  context.fillText(
+    label,
     point.x,
     point.y + 29,
   );
@@ -1113,9 +1377,9 @@ function drawTank(unit, selected) {
 
 function drawDestination(unit) {
   if (
+    unit.side !== "friendly" ||
     !unit.destination ||
-    !Array.isArray(unit.plannedPath) ||
-    unit.plannedPath.length === 0
+    !unit.plannedPath?.length
   ) {
     return;
   }
@@ -1130,106 +1394,37 @@ function drawDestination(unit) {
 
   context.save();
 
-  context.strokeStyle = "#d7b46a";
+  context.strokeStyle =
+    "#d7b46a";
+
   context.lineWidth = 3;
-  context.setLineDash([7, 5]);
+
+  context.setLineDash([
+    7,
+    5,
+  ]);
 
   context.beginPath();
 
-  route.forEach((hex, index) => {
-    const point = hexToWorld(
-      hex.column,
-      hex.row,
-    );
-
-    if (index === 0) {
-      context.moveTo(point.x, point.y);
-    } else {
-      context.lineTo(point.x, point.y);
-    }
-  });
-
-  context.stroke();
-  context.setLineDash([]);
-
-  unit.plannedPath.forEach(
+  route.forEach(
     (hex, index) => {
       const point = hexToWorld(
         hex.column,
         hex.row,
       );
 
-      const isDestination =
-        index ===
-        unit.plannedPath.length - 1;
-
-      context.beginPath();
-
-      context.arc(
-        point.x,
-        point.y,
-        isDestination ? 11 : 4,
-        0,
-        Math.PI * 2,
-      );
-
-      context.fillStyle = isDestination
-        ? "rgba(240, 207, 135, 0.34)"
-        : "#d7b46a";
-
-      context.fill();
-
-      if (isDestination) {
-        context.strokeStyle = "#f0cf87";
-        context.lineWidth = 2;
-        context.stroke();
+      if (index === 0) {
+        context.moveTo(
+          point.x,
+          point.y,
+        );
+      } else {
+        context.lineTo(
+          point.x,
+          point.y,
+        );
       }
     },
-  );
-
-  context.restore();
-}
-
-function drawMovementHistory(unit) {
-  if (
-    !Array.isArray(unit.movementHistory) ||
-    unit.movementHistory.length === 0
-  ) {
-    return;
-  }
-
-  const recent =
-    unit.movementHistory.slice(-12);
-
-  context.save();
-
-  context.strokeStyle =
-    "rgba(158, 189, 139, 0.42)";
-
-  context.lineWidth = 2;
-  context.beginPath();
-
-  recent.forEach((record, index) => {
-    const point = hexToWorld(
-      record.column,
-      record.row,
-    );
-
-    if (index === 0) {
-      context.moveTo(point.x, point.y);
-    } else {
-      context.lineTo(point.x, point.y);
-    }
-  });
-
-  const current = hexToWorld(
-    unit.column,
-    unit.row,
-  );
-
-  context.lineTo(
-    current.x,
-    current.y,
   );
 
   context.stroke();
@@ -1259,88 +1454,102 @@ function renderMap() {
     state.camera.zoom,
   );
 
-  state.terrain.forEach((terrain) => {
-    const point = hexToWorld(
-      terrain.column,
-      terrain.row,
-    );
+  state.terrain.forEach(
+    (terrain) => {
+      const point = hexToWorld(
+        terrain.column,
+        terrain.row,
+      );
 
-    const terrainType =
-      TERRAIN_TYPES[terrain.type];
+      const terrainType =
+        TERRAIN_TYPES[
+          terrain.type
+        ];
 
-    const isSelected =
-      state.selectedHex?.column ===
-        terrain.column &&
-      state.selectedHex?.row ===
-        terrain.row;
+      const selected =
+        state.selectedHex?.column ===
+          terrain.column &&
+        state.selectedHex?.row ===
+          terrain.row;
 
-    drawHexagon(
-      point.x,
-      point.y,
-      HEX_RADIUS - 1,
-      terrainType.color,
-      isSelected
-        ? "#f1d18c"
-        : terrainType.stroke,
-      isSelected ? 2.5 : 1,
-    );
+      drawHexagon(
+        point.x,
+        point.y,
+        HEX_RADIUS - 1,
+        terrainType.color,
+        selected
+          ? "#f1d18c"
+          : terrainType.stroke,
+        selected ? 2.5 : 1,
+      );
 
-    drawTerrainSymbol(
-      terrainType,
-      point.x,
-      point.y,
-      terrain.elevation,
-    );
-  });
-
-  state.units.forEach(
-    drawMovementHistory,
+      drawTerrainSymbol(
+        terrainType,
+        point.x,
+        point.y,
+        terrain.elevation,
+      );
+    },
   );
 
-  state.units.forEach(drawDestination);
+  state.units.forEach(
+    drawDestination,
+  );
 
-  state.units.forEach((unit) => {
-    drawTank(
-      unit,
-      unit.id === state.selectedUnitId,
-    );
-  });
+  state.units.forEach(
+    drawUnit,
+  );
 
   context.restore();
 
   if (state.developerMode) {
-    drawDeveloperHud(rect.width);
+    drawDeveloperHud(
+      rect.width,
+    );
   }
 }
 
-function drawDeveloperHud(canvasWidth) {
-  const selectedUnit = getSelectedUnit();
+function drawDeveloperHud(
+  canvasWidth,
+) {
+  const selected =
+    getSelectedUnit();
 
-  if (!selectedUnit) {
-    return;
-  }
+  const enemies =
+    state.units.filter(
+      (unit) =>
+        unit.side === "enemy",
+    );
 
   const lines = [
     "DEV MODE",
     `TURN: ${state.turn}`,
-    `SELECTED: ${selectedUnit.id}`,
-    `HEX: ${selectedUnit.column},${selectedUnit.row}`,
-    `PATH: ${selectedUnit.plannedPath.length}`,
-    `ZOOM: ${state.camera.zoom.toFixed(2)}`,
+    `SELECTED: ${selected?.id ?? "NONE"}`,
     `UNITS: ${state.units.length}`,
+    `ENEMIES: ${enemies.length}`,
+
+    ...enemies.map(
+      (unit) =>
+        `${unit.id}: ` +
+        `${unit.column},${unit.row} ` +
+        `S${unit.detectionStage}`,
+    ),
   ];
 
-  const width = 138;
+  const width = 190;
+
   const height =
-    lines.length * 17 + 12;
+    lines.length * 16 + 12;
 
   const x =
-    canvasWidth - width - 10;
+    canvasWidth -
+    width -
+    10;
 
   const y = 10;
 
   context.fillStyle =
-    "rgba(5, 10, 8, 0.85)";
+    "rgba(5, 10, 8, 0.88)";
 
   context.fillRect(
     x,
@@ -1349,7 +1558,8 @@ function drawDeveloperHud(canvasWidth) {
     height,
   );
 
-  context.strokeStyle = "#d7b46a";
+  context.strokeStyle =
+    "#d7b46a";
 
   context.strokeRect(
     x,
@@ -1358,31 +1568,42 @@ function drawDeveloperHud(canvasWidth) {
     height,
   );
 
-  context.fillStyle = "#ffe3a5";
-  context.font = "10px monospace";
-  context.textAlign = "left";
+  context.fillStyle =
+    "#ffe3a5";
 
-  lines.forEach((line, index) => {
-    context.fillText(
-      line,
-      x + 8,
-      y + 17 + index * 17,
-    );
-  });
+  context.font =
+    "10px monospace";
+
+  context.textAlign =
+    "left";
+
+  lines.forEach(
+    (line, index) => {
+      context.fillText(
+        line,
+        x + 8,
+        y +
+          17 +
+          index * 16,
+      );
+    },
+  );
 }
 
 function beginPointerDrag(event) {
-  state.camera.dragging = true;
-  state.camera.pointerId =
-    event.pointerId;
-
-  state.camera.lastX = event.clientX;
-  state.camera.lastY = event.clientY;
-
-  state.camera.downX = event.clientX;
-  state.camera.downY = event.clientY;
-
-  state.camera.moved = false;
+  Object.assign(
+    state.camera,
+    {
+      dragging: true,
+      pointerId:
+        event.pointerId,
+      lastX: event.clientX,
+      lastY: event.clientY,
+      downX: event.clientX,
+      downY: event.clientY,
+      moved: false,
+    },
+  );
 
   elements.canvas.setPointerCapture(
     event.pointerId,
@@ -1398,28 +1619,32 @@ function continuePointerDrag(event) {
     return;
   }
 
-  const deltaX =
-    event.clientX -
-    state.camera.lastX;
+  const totalMovement =
+    Math.hypot(
+      event.clientX -
+        state.camera.downX,
 
-  const deltaY =
-    event.clientY -
-    state.camera.lastY;
-
-  const totalMovement = Math.hypot(
-    event.clientX - state.camera.downX,
-    event.clientY - state.camera.downY,
-  );
+      event.clientY -
+        state.camera.downY,
+    );
 
   if (totalMovement > 7) {
     state.camera.moved = true;
   }
 
-  state.camera.x += deltaX;
-  state.camera.y += deltaY;
+  state.camera.x +=
+    event.clientX -
+    state.camera.lastX;
 
-  state.camera.lastX = event.clientX;
-  state.camera.lastY = event.clientY;
+  state.camera.y +=
+    event.clientY -
+    state.camera.lastY;
+
+  state.camera.lastX =
+    event.clientX;
+
+  state.camera.lastY =
+    event.clientY;
 
   renderMap();
 }
@@ -1432,7 +1657,8 @@ function endPointerDrag(event) {
     return;
   }
 
-  const wasTap = !state.camera.moved;
+  const wasTap =
+    !state.camera.moved;
 
   state.camera.dragging = false;
   state.camera.pointerId = null;
@@ -1456,49 +1682,38 @@ function endPointerDrag(event) {
 }
 
 function handleAction(action) {
-  switch (action) {
-    case "open-battle":
-      showScreen("battle");
-      break;
-
-    case "return-menu":
-      showScreen("menu");
-      break;
-
-    case "open-settings":
-      elements.settingsDialog.showModal();
-      break;
-
-    case "open-project-info":
-      elements.projectInfoDialog.showModal();
-      break;
-
-    case "center-camera":
-      centerCamera();
-
-      setMapMessage(
-        "선택 객체를 화면 중앙에 표시했습니다.",
-      );
-
-      renderMap();
-      break;
-
-    case "zoom-in":
-      changeZoom(0.15);
-      break;
-
-    case "zoom-out":
-      changeZoom(-0.15);
-      break;
-
-    case "execute-turn":
-      executeTurn();
-      break;
-
-    default:
-      console.warn(
-        `알 수 없는 action: ${action}`,
-      );
+  if (action === "open-battle") {
+    showScreen("battle");
+  } else if (
+    action === "return-menu"
+  ) {
+    showScreen("menu");
+  } else if (
+    action === "open-settings"
+  ) {
+    elements.settingsDialog.showModal();
+  } else if (
+    action ===
+    "open-project-info"
+  ) {
+    elements.projectInfoDialog.showModal();
+  } else if (
+    action === "center-camera"
+  ) {
+    centerCamera();
+    renderMap();
+  } else if (
+    action === "zoom-in"
+  ) {
+    changeZoom(0.15);
+  } else if (
+    action === "zoom-out"
+  ) {
+    changeZoom(-0.15);
+  } else if (
+    action === "execute-turn"
+  ) {
+    executeTurn();
   }
 }
 
@@ -1547,11 +1762,7 @@ function bindEvents() {
       state.developerMode =
         event.target.checked;
 
-      if (
-        state.activeScreen === "battle"
-      ) {
-        renderMap();
-      }
+      renderMap();
     },
   );
 
@@ -1579,7 +1790,8 @@ function bindEvents() {
     "resize",
     () => {
       if (
-        state.activeScreen === "battle"
+        state.activeScreen ===
+        "battle"
       ) {
         resizeCanvas();
         centerCamera();
@@ -1591,9 +1803,16 @@ function bindEvents() {
 
 function initialize() {
   createTerrain();
+
+  updateDetection(
+    runtimeScenario,
+  );
+
   setInterfaceText();
   bindEvents();
+
   updateSelectedUnitSummary();
+
   showScreen("menu");
 }
 
