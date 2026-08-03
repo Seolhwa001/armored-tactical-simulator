@@ -23,6 +23,7 @@ const SCENARIOS = {
         row: 0,
         hullDirection: -Math.PI / 6,
         turretDirection: -Math.PI / 6,
+        detectionRange: 10,
       },
     ],
 
@@ -33,6 +34,7 @@ const SCENARIOS = {
         type: "artillery-observer",
         role: "observer",
         name: "미확인 관측조",
+        model: "포종심정찰대",
         column: 11,
         row: -6,
 
@@ -102,6 +104,7 @@ const SCENARIOS = {
         row: 0,
         hullDirection: -Math.PI / 6,
         turretDirection: -Math.PI / 6,
+        detectionRange: 10,
       },
     ],
 
@@ -112,6 +115,7 @@ const SCENARIOS = {
         type: "atgm-team",
         role: "anti-tank",
         name: "미확인 보병",
+        model: "대전차화기조",
         column: 12,
         row: 3,
 
@@ -171,5 +175,7 @@ export function createScenario(scenarioId) {
 }
 
 export function getDefaultScenario() {
-  return createScenario("artillery-observer");
+  return createScenario(
+    "artillery-observer",
+  );
 }
