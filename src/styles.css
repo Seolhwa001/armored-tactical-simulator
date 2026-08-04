@@ -1,3 +1,5 @@
+/* src/styles.css — 전체 교체, 1~781행 */
+
 :root {
   color-scheme: dark;
 
@@ -398,6 +400,14 @@ input:focus-visible {
   gap: 6px;
 }
 
+.command-categories--vehicle {
+  grid-template-columns:
+    repeat(
+      3,
+      minmax(0, 1fr)
+    );
+}
+
 .command-category {
   min-width: 0;
   min-height: 46px;
@@ -428,7 +438,7 @@ input:focus-visible {
   gap: 6px;
 }
 
-.command-options p {
+.command-options > p {
   grid-column: 1 / -1;
   align-self: center;
   margin: 0;
@@ -438,6 +448,7 @@ input:focus-visible {
 }
 
 .command-option {
+  min-width: 0;
   min-height: 46px;
   padding: 6px;
   border:
@@ -453,6 +464,134 @@ input:focus-visible {
   border-color: var(--warning);
   background: #443822;
   color: #ffe3a5;
+}
+
+.command-option.is-current-step {
+  border-color: var(--accent);
+  background: #294233;
+  color: var(--accent-strong);
+}
+
+.command-section {
+  grid-column: 1 / -1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns:
+    repeat(
+      3,
+      minmax(0, 1fr)
+    );
+  gap: 6px;
+  padding: 8px;
+  border:
+    1px solid
+    var(--border);
+  border-radius: 10px;
+  background:
+    rgba(
+      23,
+      35,
+      30,
+      0.82
+    );
+}
+
+.command-section-title {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 2px 2px 4px;
+  color: var(--accent-strong);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.turret-control-panel {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns:
+    repeat(
+      3,
+      minmax(0, 1fr)
+    );
+  gap: 6px;
+}
+
+.turret-status-panel,
+.observation-status-panel {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns:
+    repeat(
+      3,
+      minmax(0, 1fr)
+    );
+  gap: 6px;
+  padding: 8px;
+  border:
+    1px solid
+    var(--border);
+  border-radius: 9px;
+  background: #111a16;
+}
+
+.turret-status-panel > span,
+.observation-status-panel > span {
+  min-width: 0;
+  display: block;
+  padding: 5px 6px;
+  border-radius: 7px;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 0.67rem;
+  text-align: center;
+}
+
+.turret-status-panel strong,
+.observation-status-panel strong {
+  display: block;
+  margin-top: 2px;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 0.72rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.turret-warning {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 7px 8px;
+  border:
+    1px solid
+    rgba(
+      215,
+      180,
+      106,
+      0.4
+    );
+  border-radius: 7px;
+  background:
+    rgba(
+      68,
+      56,
+      34,
+      0.7
+    );
+  color: #ffe3a5;
+  font-size: 0.7rem;
+  text-align: center;
+}
+
+.turret-mode-group {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns:
+    repeat(
+      3,
+      minmax(0, 1fr)
+    );
+  gap: 6px;
 }
 
 .fire-procedure {
@@ -478,8 +617,50 @@ input:focus-visible {
     );
 }
 
-.fire-procedure > .command-option:first-child {
+.fire-procedure-progress {
   grid-column: 1 / -1;
+  display: flex;
+  gap: 5px;
+  padding: 7px;
+  overflow-x: auto;
+  border:
+    1px solid
+    var(--border);
+  border-radius: 8px;
+  background: #0d1511;
+  scrollbar-width: thin;
+}
+
+.fire-procedure-step {
+  flex: 0 0 auto;
+  min-width: 76px;
+  padding: 6px 8px;
+  border:
+    1px solid
+    var(--border);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 0.66rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.fire-procedure-step.is-complete {
+  border-color:
+    rgba(
+      158,
+      189,
+      139,
+      0.45
+    );
+  color: var(--accent);
+}
+
+.fire-procedure-step.is-current {
+  border-color: var(--warning);
+  background: #443822;
+  color: #ffe3a5;
 }
 
 .fire-ammunition-group {
@@ -513,6 +694,35 @@ input:focus-visible {
   background: #111a16;
   color: var(--text-muted);
   font-size: 0.74rem;
+  text-align: center;
+}
+
+.fire-result-status {
+  grid-column: 1 / -1;
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 7px 9px;
+  border:
+    1px solid
+    rgba(
+      215,
+      180,
+      106,
+      0.45
+    );
+  border-radius: 8px;
+  background:
+    rgba(
+      68,
+      56,
+      34,
+      0.58
+    );
+  color: #ffe3a5;
+  font-size: 0.74rem;
+  font-weight: 700;
   text-align: center;
 }
 
@@ -643,12 +853,56 @@ input:focus-visible {
     height: 40px;
   }
 
+  .command-section {
+    grid-template-columns:
+      repeat(
+        2,
+        minmax(0, 1fr)
+      );
+  }
+
+  .command-section-title,
+  .command-section
+    > .turret-status-panel,
+  .command-section
+    > .observation-status-panel,
+  .command-section
+    > .turret-mode-group {
+    grid-column: 1 / -1;
+  }
+
+  .turret-status-panel,
+  .observation-status-panel {
+    grid-template-columns:
+      repeat(
+        2,
+        minmax(0, 1fr)
+      );
+  }
+
   .fire-ammunition-group {
     grid-template-columns:
       repeat(
         2,
         minmax(0, 1fr)
       );
+  }
+
+  .fire-procedure {
+    grid-template-columns:
+      repeat(
+        2,
+        minmax(0, 1fr)
+      );
+  }
+
+  .fire-procedure
+    > .turret-status-panel,
+  .fire-procedure-progress,
+  .fire-ammunition-group,
+  .fire-target-status,
+  .fire-result-status {
+    grid-column: 1 / -1;
   }
 }
 
@@ -672,6 +926,7 @@ input:focus-visible {
     min-height: 42px;
   }
 
+  .command-section,
   .fire-procedure {
     padding: 6px;
   }
@@ -709,4 +964,4 @@ input:focus-visible {
       1px solid
       var(--border);
   }
-  }
+}
