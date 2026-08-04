@@ -654,8 +654,8 @@ const smokeArea = {
 
 id:
 
-smoke-${shooter.id}-${turn}-${targetHex.column}-${targetHex.row},
-
+id:
+  `smoke-${shooter.id}-${turn}-${targetHex.column}-${targetHex.row}`,
 
 column:  
   targetHex.column,  
