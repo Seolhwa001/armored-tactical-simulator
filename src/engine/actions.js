@@ -1,10 +1,11 @@
-// src/engine/actions.js — 전체 교체, 1~394행
+// src/engine/actions.js — 전체 교체, 예상 1~327행
 
+import { UNIT_ACTIONS } from "./constants/actionConstants.js";
+import { createIdleAction } from "./factories/actionFactory.js";
 import {
   DETECTION_STAGES,
   getHexDistance,
 } from "./detection.js";
-
 import {
   isTurretAligned,
   setTurretTargetDirection,
@@ -12,15 +13,7 @@ import {
   updateTurretRotation,
 } from "./turretControl.js";
 
-export const UNIT_ACTIONS = Object.freeze({
-  IDLE: "idle",
-  MOVE: "move",
-  OBSERVE: "observe",
-  RECON: "recon",
-  RECON_BY_FIRE: "recon-by-fire",
-  FIRE: "fire",
-  TURRET_STOW: "turret-stow",
-});
+export { UNIT_ACTIONS };
 
 const FIRE_STATES = Object.freeze({
   ADJUST: "adjust",
@@ -32,107 +25,58 @@ const FIRE_PROCEDURE_STATES = Object.freeze({
   ADJUSTING: "adjusting",
 });
 
-function getDirectionBetween(
-  observer,
-  target,
-) {
+function getDirectionBetween(observer, target) {
   return Math.atan2(
     target.row - observer.row,
     target.column - observer.column,
   );
 }
 
-function isTurretTrackingAction(
-  actionType,
-) {
+function isTurretTrackingAction(actionType) {
   return (
-    actionType ===
-      UNIT_ACTIONS.RECON_BY_FIRE ||
-    actionType ===
-      UNIT_ACTIONS.FIRE
+    actionType === UNIT_ACTIONS.RECON_BY_FIRE ||
+    actionType === UNIT_ACTIONS.FIRE
   );
 }
 
-export function setPersistentAction(
-  unit,
-  action,
-  turn = 1,
-) {
+export function setPersistentAction(unit, action, turn = 1) {
   if (unit.destroyed) {
     return null;
   }
 
   unit.action = {
-    type:
-      action.type ??
-      UNIT_ACTIONS.IDLE,
-
-    targetHex:
-      action.targetHex
-        ? {
-            column:
-              action.targetHex.column,
-
-            row:
-              action.targetHex.row,
-          }
-        : null,
-
-    targetUnitId:
-      action.targetUnitId ??
-      null,
-
-    direction:
-      Number.isFinite(
-        action.direction,
-      )
-        ? action.direction
-        : null,
-
-    crewRole:
-      action.crewRole ??
-      null,
-
+    type: action.type ?? UNIT_ACTIONS.IDLE,
+    targetHex: action.targetHex
+      ? {
+          column: action.targetHex.column,
+          row: action.targetHex.row,
+        }
+      : null,
+    targetUnitId: action.targetUnitId ?? null,
+    direction: Number.isFinite(action.direction)
+      ? action.direction
+      : null,
+    crewRole: action.crewRole ?? null,
     startedTurn: turn,
     persistent: true,
   };
 
-  unit.command =
-    action.label ??
-    unit.command;
+  unit.command = action.label ?? unit.command;
 
   if (
     unit.turretControl &&
-    isTurretTrackingAction(
-      unit.action.type,
-    ) &&
-    Number.isFinite(
-      unit.action.direction,
-    )
+    isTurretTrackingAction(unit.action.type) &&
+    Number.isFinite(unit.action.direction)
   ) {
     unlockTurretFromHull(unit);
-
-    setTurretTargetDirection(
-      unit,
-      unit.action.direction,
-    );
+    setTurretTargetDirection(unit, unit.action.direction);
   }
 
   return unit.action;
 }
 
-export function clearPersistentAction(
-  unit,
-) {
-  unit.action = {
-    type: UNIT_ACTIONS.IDLE,
-    targetHex: null,
-    targetUnitId: null,
-    direction: null,
-    crewRole: null,
-    startedTurn: null,
-    persistent: true,
-  };
+export function clearPersistentAction(unit) {
+  unit.action = createIdleAction();
 
   if (!unit.destroyed) {
     unit.command = "대기";
@@ -145,13 +89,8 @@ export function setCrewObservationDirection(
   direction,
   turn = 1,
 ) {
-  const observation =
-    unit.crewObservation;
-
-  const crew =
-    observation?.observers?.[
-      crewRole
-    ];
+  const observation = unit.crewObservation;
+  const crew = observation?.observers?.[crewRole];
 
   if (
     unit.destroyed ||
@@ -161,9 +100,7 @@ export function setCrewObservationDirection(
     return false;
   }
 
-  observation.activeCrewRole =
-    crewRole;
-
+  observation.activeCrewRole = crewRole;
   crew.direction = direction;
 
   unit.action = {
@@ -176,19 +113,14 @@ export function setCrewObservationDirection(
     persistent: true,
   };
 
-  unit.command =
-    `${crewRole} 감시`;
+  unit.command = `${crewRole} 감시`;
 
   return true;
 }
 
-export function setCommanderSightDirection(
-  unit,
-  direction,
-) {
+export function setCommanderSightDirection(unit, direction) {
   const sight =
-    unit.crewObservation
-      ?.commanderIndependentSight;
+    unit.crewObservation?.commanderIndependentSight;
 
   if (
     unit.destroyed ||
@@ -206,38 +138,25 @@ export function setCommanderSightDirection(
   return true;
 }
 
-function isCommanderSightTarget(
-  unit,
-  targetUnit,
-) {
+function isCommanderSightTarget(unit, targetUnit) {
   const sight =
-    unit.crewObservation
-      ?.commanderIndependentSight;
+    unit.crewObservation?.commanderIndependentSight;
 
   return (
     sight?.operational === true &&
     sight.tracking === true &&
-    sight.targetUnitId ===
-      targetUnit.id
+    sight.targetUnitId === targetUnit.id
   );
 }
 
-function isCommanderSightDetection(
-  unit,
-  targetUnit,
-) {
+function isCommanderSightDetection(unit, targetUnit) {
   return (
-    targetUnit.detectedByUnitId ===
-      unit.id &&
-    targetUnit.detectedByCrewRole ===
-      "commander-cps"
+    targetUnit.detectedByUnitId === unit.id &&
+    targetUnit.detectedByCrewRole === "commander-cps"
   );
 }
 
-function canDesignateHunterKillerTarget(
-  unit,
-  targetUnit,
-) {
+function canDesignateHunterKillerTarget(unit, targetUnit) {
   if (
     !targetUnit ||
     targetUnit.destroyed ||
@@ -247,21 +166,13 @@ function canDesignateHunterKillerTarget(
   }
 
   const hasContact =
-    (
-      targetUnit.detectionStage ??
-      DETECTION_STAGES.HIDDEN
-    ) >= DETECTION_STAGES.CONTACT;
+    (targetUnit.detectionStage ?? DETECTION_STAGES.HIDDEN) >=
+    DETECTION_STAGES.CONTACT;
 
   return (
     hasContact ||
-    isCommanderSightTarget(
-      unit,
-      targetUnit,
-    ) ||
-    isCommanderSightDetection(
-      unit,
-      targetUnit,
-    )
+    isCommanderSightTarget(unit, targetUnit) ||
+    isCommanderSightDetection(unit, targetUnit)
   );
 }
 
@@ -270,59 +181,34 @@ export function designateHunterKillerTarget(
   targetUnit,
   hunterKillerStates,
 ) {
-  const observation =
-    unit.crewObservation;
-
-  const hunterKiller =
-    observation?.hunterKiller;
-
-  const sight =
-    observation
-      ?.commanderIndependentSight;
+  const observation = unit.crewObservation;
+  const hunterKiller = observation?.hunterKiller;
+  const sight = observation?.commanderIndependentSight;
 
   if (
     unit.destroyed ||
     !hunterKiller?.enabled ||
     !sight?.operational ||
     !hunterKillerStates ||
-    !canDesignateHunterKillerTarget(
-      unit,
-      targetUnit,
-    )
+    !canDesignateHunterKillerTarget(unit, targetUnit)
   ) {
     return false;
   }
 
-  const direction =
-    getDirectionBetween(
-      unit,
-      targetUnit,
-    );
+  const direction = getDirectionBetween(unit, targetUnit);
 
   sight.direction = direction;
-  sight.targetUnitId =
-    targetUnit.id;
+  sight.targetUnitId = targetUnit.id;
   sight.locked = true;
   sight.tracking = true;
 
-  hunterKiller.state =
-    hunterKillerStates.DESIGNATING;
-
-  hunterKiller.detectedTargetUnitId =
-    targetUnit.id;
-
-  hunterKiller.designatedTargetUnitId =
-    targetUnit.id;
-
-  hunterKiller.handedOffTargetUnitId =
-    null;
+  hunterKiller.state = hunterKillerStates.DESIGNATING;
+  hunterKiller.detectedTargetUnitId = targetUnit.id;
+  hunterKiller.designatedTargetUnitId = targetUnit.id;
+  hunterKiller.handedOffTargetUnitId = null;
 
   unlockTurretFromHull(unit);
-
-  setTurretTargetDirection(
-    unit,
-    direction,
-  );
+  setTurretTargetDirection(unit, direction);
 
   return true;
 }
@@ -332,17 +218,10 @@ function clearHunterKillerTarget(
   sight,
   hunterKillerStates,
 ) {
-  hunterKiller.state =
-    hunterKillerStates.SEARCHING;
-
-  hunterKiller.detectedTargetUnitId =
-    null;
-
-  hunterKiller.designatedTargetUnitId =
-    null;
-
-  hunterKiller.handedOffTargetUnitId =
-    null;
+  hunterKiller.state = hunterKillerStates.SEARCHING;
+  hunterKiller.detectedTargetUnitId = null;
+  hunterKiller.designatedTargetUnitId = null;
+  hunterKiller.handedOffTargetUnitId = null;
 
   if (sight) {
     sight.targetUnitId = null;
@@ -358,15 +237,9 @@ function updateHunterKiller(
   hunterKillerStates,
   acceptHunterKillerTarget,
 ) {
-  const observation =
-    unit.crewObservation;
-
-  const hunterKiller =
-    observation?.hunterKiller;
-
-  const sight =
-    observation
-      ?.commanderIndependentSight;
+  const observation = unit.crewObservation;
+  const hunterKiller = observation?.hunterKiller;
+  const sight = observation?.commanderIndependentSight;
 
   if (
     unit.destroyed ||
@@ -376,16 +249,13 @@ function updateHunterKiller(
     return;
   }
 
-  const targetId =
-    hunterKiller
-      .designatedTargetUnitId;
+  const targetId = hunterKiller.designatedTargetUnitId;
 
-  const target =
-    runtimeScenario.units.find(
-      (candidate) =>
-        candidate.id === targetId &&
-        !candidate.destroyed,
-    );
+  const target = runtimeScenario.units.find(
+    (candidate) =>
+      candidate.id === targetId &&
+      !candidate.destroyed,
+  );
 
   if (!target) {
     clearHunterKillerTarget(
@@ -397,30 +267,21 @@ function updateHunterKiller(
     return;
   }
 
-  const direction =
-    getDirectionBetween(
-      unit,
-      target,
-    );
+  const direction = getDirectionBetween(unit, target);
 
   if (sight) {
     sight.direction = direction;
-    sight.targetUnitId =
-      target.id;
+    sight.targetUnitId = target.id;
     sight.locked = true;
     sight.tracking = true;
   }
 
   unlockTurretFromHull(unit);
-
-  setTurretTargetDirection(
-    unit,
-    direction,
-  );
+  setTurretTargetDirection(unit, direction);
 
   if (
     hunterKiller.state ===
-      hunterKillerStates.DESIGNATING
+    hunterKillerStates.DESIGNATING
   ) {
     if (!isTurretAligned(unit)) {
       return;
@@ -448,7 +309,7 @@ function updateHunterKiller(
 
   if (
     hunterKiller.state ===
-      hunterKillerStates.HANDOFF
+    hunterKillerStates.HANDOFF
   ) {
     hunterKiller.state =
       hunterKillerStates.TRACKING;
@@ -474,9 +335,7 @@ export function applyReconByFire(
   setPersistentAction(
     attacker,
     {
-      type:
-        UNIT_ACTIONS.RECON_BY_FIRE,
-
+      type: UNIT_ACTIONS.RECON_BY_FIRE,
       targetHex,
       direction,
       label: "화력수색",
@@ -505,23 +364,20 @@ export function applyReconByFire(
 
       enemy.temporaryExposure =
         Math.max(
-          enemy.temporaryExposure ??
-            0,
+          enemy.temporaryExposure ?? 0,
           exposure,
         );
 
       enemy.exposedUntilTurn =
         Math.max(
-          enemy.exposedUntilTurn ??
-            0,
+          enemy.exposedUntilTurn ?? 0,
           turn + 2,
         );
 
       const revealChance =
         Math.min(
           0.9,
-          0.3 +
-            exposure / 100,
+          0.3 + exposure / 100,
         );
 
       if (
@@ -613,13 +469,11 @@ function updateAdjustedFireAction(
   );
 
   const procedureState =
-    unit.fireControl
-      .procedureState;
+    unit.fireControl.procedureState;
 
   if (
     procedureState ===
-      FIRE_PROCEDURE_STATES
-        .ADJUSTING ||
+      FIRE_PROCEDURE_STATES.ADJUSTING ||
     procedureState ===
       FIRE_PROCEDURE_STATES.FIRED
   ) {
@@ -633,8 +487,7 @@ function updateAdjustedFireAction(
 
   if (
     procedureState !==
-      FIRE_PROCEDURE_STATES
-        .READY_TO_FIRE
+    FIRE_PROCEDURE_STATES.READY_TO_FIRE
   ) {
     return null;
   }
@@ -696,8 +549,7 @@ export function processPersistentActions(
   runtimeScenario.units
     .filter(
       (unit) =>
-        unit.side ===
-          "friendly" &&
+        unit.side === "friendly" &&
         !unit.destroyed,
     )
     .forEach((unit) => {
@@ -711,7 +563,6 @@ export function processPersistentActions(
         runtimeScenario,
         turn,
         hunterKillerStates,
-
         fireControlFunctions
           .acceptHunterKillerTarget,
       );
@@ -754,4 +605,4 @@ export function processPersistentActions(
   return {
     adjustedShots,
   };
-  }
+}
