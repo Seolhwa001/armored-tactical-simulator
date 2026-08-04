@@ -45,9 +45,7 @@ function getDirectionBetween(observer, target) {
 }
 
 function hasFireTarget(unit) {
-  return Boolean(
-    unit.fireControl?.targetHex,
-  );
+  return Boolean(unit.fireControl?.targetHex);
 }
 
 function setProcedureState(
@@ -59,24 +57,19 @@ function setProcedureState(
     return;
   }
 
-  unit.fireControl.procedureState =
-    procedureState;
-
-  unit.fireControl.procedureTurn =
-    turn;
+  unit.fireControl.procedureState = procedureState;
+  unit.fireControl.procedureTurn = turn;
 }
 
 function resetAimingState(unit) {
-  const fireControl =
-    unit.fireControl;
+  const fireControl = unit.fireControl;
 
   fireControl.aiming = false;
   fireControl.aimStartedTurn = null;
 }
 
 function clearLoadingProgress(unit) {
-  const fireControl =
-    unit.fireControl;
+  const fireControl = unit.fireControl;
 
   fireControl.loading = false;
   fireControl.loadingAmmunition = null;
@@ -84,42 +77,30 @@ function clearLoadingProgress(unit) {
 }
 
 function clearLoadedRound(unit) {
-  const fireControl =
-    unit.fireControl;
+  const fireControl = unit.fireControl;
 
   fireControl.loaded = false;
   fireControl.loadedAmmunition = null;
   fireControl.loadedTurn = null;
 }
 
-function setAdjustedFireAction(
-  unit,
-  turn,
-) {
-  const fireControl =
-    unit.fireControl;
+function setAdjustedFireAction(unit, turn) {
+  const fireControl = unit.fireControl;
+  const targetHex = fireControl.targetHex;
 
-  const targetHex =
-    fireControl.targetHex;
-
-  const direction =
-    getDirectionBetween(
-      unit,
-      targetHex,
-    );
+  const direction = getDirectionBetween(
+    unit,
+    targetHex,
+  );
 
   unit.action = {
     type: UNIT_ACTIONS.FIRE,
-
     targetHex: {
       column: targetHex.column,
       row: targetHex.row,
     },
-
     targetUnitId:
-      fireControl.targetUnitId ??
-      null,
-
+      fireControl.targetUnitId ?? null,
     direction,
     crewRole: null,
     startedTurn: turn,
@@ -129,37 +110,26 @@ function setAdjustedFireAction(
   unit.command = "쏴-수정";
 
   unlockTurretFromHull(unit);
-
-  setTurretTargetDirection(
-    unit,
-    direction,
-  );
+  setTurretTargetDirection(unit, direction);
 }
 
 function clearFireAction(unit) {
   if (
-    unit.action?.type !==
-      UNIT_ACTIONS.FIRE &&
-    unit.action?.type !==
-      UNIT_ACTIONS.RECON_BY_FIRE
+    unit.action?.type !== UNIT_ACTIONS.FIRE &&
+    unit.action?.type !== UNIT_ACTIONS.RECON_BY_FIRE
   ) {
     return;
   }
 
-  unit.action =
-    createIdleAction();
+  unit.action = createIdleAction();
 
   if (!unit.destroyed) {
     unit.command = "대기";
   }
 }
 
-function beginAimingOrTraverse(
-  unit,
-  turn,
-) {
-  const fireControl =
-    unit.fireControl;
+function beginAimingOrTraverse(unit, turn) {
+  const fireControl = unit.fireControl;
 
   if (!hasFireTarget(unit)) {
     resetAimingState(unit);
@@ -172,15 +142,13 @@ function beginAimingOrTraverse(
 
     return {
       aligned: false,
-      state:
-        FIRE_PROCEDURE_STATES.STOPPED,
+      state: FIRE_PROCEDURE_STATES.STOPPED,
     };
   }
 
   if (isTurretAligned(unit)) {
     fireControl.aiming = true;
-    fireControl.aimStartedTurn =
-      turn;
+    fireControl.aimStartedTurn = turn;
 
     setProcedureState(
       unit,
@@ -192,8 +160,7 @@ function beginAimingOrTraverse(
 
     return {
       aligned: true,
-      state:
-        FIRE_PROCEDURE_STATES.AIMING,
+      state: FIRE_PROCEDURE_STATES.AIMING,
     };
   }
 
@@ -209,23 +176,19 @@ function beginAimingOrTraverse(
 
   return {
     aligned: false,
-    state:
-      FIRE_PROCEDURE_STATES.TRAVERSING,
+    state: FIRE_PROCEDURE_STATES.TRAVERSING,
   };
 }
 
 export function createFireControl() {
   return {
     state: FIRE_STATES.STOPPED,
-
     procedureState:
       FIRE_PROCEDURE_STATES.STOPPED,
-
     procedureTurn: null,
 
     ammunition:
       AMMUNITION_TYPES.APFSDS,
-
     loadedAmmunition: null,
     loadingAmmunition: null,
 
@@ -239,7 +202,6 @@ export function createFireControl() {
 
     loading: false,
     loaded: false,
-
     loadStartedTurn: null,
     loadedTurn: null,
 
@@ -260,15 +222,14 @@ export function selectAmmunition(
   if (
     unit.destroyed ||
     !unit.fireControl ||
-    !Object.values(
-      AMMUNITION_TYPES,
-    ).includes(ammunition)
+    !Object.values(AMMUNITION_TYPES).includes(
+      ammunition,
+    )
   ) {
     return false;
   }
 
-  unit.fireControl.ammunition =
-    ammunition;
+  unit.fireControl.ammunition = ammunition;
 
   return true;
 }
@@ -288,12 +249,10 @@ export function setFireTarget(
     return false;
   }
 
-  const fireControl =
-    unit.fireControl;
+  const fireControl = unit.fireControl;
 
   if (ammunition) {
-    fireControl.ammunition =
-      ammunition;
+    fireControl.ammunition = ammunition;
   }
 
   fireControl.targetHex = {
@@ -304,38 +263,28 @@ export function setFireTarget(
   fireControl.targetUnitId =
     target.unitId ?? null;
 
-  fireControl.state =
-    FIRE_STATES.READY;
-
-  fireControl.gunnerAutonomous =
-    false;
-
-  fireControl.lastShotResult =
-    null;
+  fireControl.state = FIRE_STATES.READY;
+  fireControl.gunnerAutonomous = false;
+  fireControl.lastShotResult = null;
 
   resetAimingState(unit);
-
   unlockTurretFromHull(unit);
 
   setTurretTargetDirection(
     unit,
-    getDirectionBetween(
-      unit,
-      target,
-    ),
+    getDirectionBetween(unit, target),
   );
 
   if (fireControl.loading) {
     unit.command =
       fireControl.procedureState ===
-        FIRE_PROCEDURE_STATES.RELOADING
+      FIRE_PROCEDURE_STATES.RELOADING
         ? "재장전 중 / 표적 지정"
         : "장전 중 / 표적 지정";
   } else {
     setProcedureState(
       unit,
-      FIRE_PROCEDURE_STATES
-        .TARGET_DESIGNATED,
+      FIRE_PROCEDURE_STATES.TARGET_DESIGNATED,
       turn,
     );
 
@@ -359,17 +308,16 @@ export function acceptHunterKillerTarget(
     return false;
   }
 
-  const success =
-    setFireTarget(
-      unit,
-      {
-        column: target.column,
-        row: target.row,
-        unitId: target.id,
-      },
-      null,
-      turn,
-    );
+  const success = setFireTarget(
+    unit,
+    {
+      column: target.column,
+      row: target.row,
+      unitId: target.id,
+    },
+    null,
+    turn,
+  );
 
   if (!success) {
     return false;
@@ -380,23 +328,18 @@ export function acceptHunterKillerTarget(
   return true;
 }
 
-export function beginLoading(
-  unit,
-  turn,
-) {
+export function beginLoading(unit, turn) {
   if (
     unit.destroyed ||
     !unit.fireControl
   ) {
     return {
       success: false,
-      reason:
-        "장전할 수 없는 상태입니다.",
+      reason: "장전할 수 없는 상태입니다.",
     };
   }
 
-  const fireControl =
-    unit.fireControl;
+  const fireControl = unit.fireControl;
 
   if (fireControl.loaded) {
     return {
@@ -409,26 +352,21 @@ export function beginLoading(
   if (fireControl.loading) {
     return {
       success: false,
-      reason:
-        "이미 장전 중입니다.",
+      reason: "이미 장전 중입니다.",
     };
   }
 
   fireControl.loading = true;
-
   fireControl.loadingAmmunition =
     fireControl.ammunition;
-
-  fireControl.loadStartedTurn =
-    turn;
+  fireControl.loadStartedTurn = turn;
 
   const isReload =
     fireControl.procedureState ===
       FIRE_PROCEDURE_STATES.FIRED ||
     fireControl.procedureState ===
       FIRE_PROCEDURE_STATES.ADJUSTING ||
-    fireControl.state ===
-      FIRE_STATES.ADJUST;
+    fireControl.state === FIRE_STATES.ADJUST;
 
   setProcedureState(
     unit,
@@ -438,17 +376,15 @@ export function beginLoading(
     turn,
   );
 
-  unit.command =
-    isReload
-      ? "재장전"
-      : "장전";
+  unit.command = isReload
+    ? "재장전"
+    : "장전";
 
   return {
     success: true,
     ammunition:
       fireControl.loadingAmmunition,
-    reloading:
-      isReload,
+    reloading: isReload,
   };
 }
 
@@ -456,10 +392,7 @@ export function beginReloading(
   unit,
   turn,
 ) {
-  return beginLoading(
-    unit,
-    turn,
-  );
+  return beginLoading(unit, turn);
 }
 
 export function issueFireCommand(
@@ -477,18 +410,15 @@ export function issueFireCommand(
     };
   }
 
-  const fireControl =
-    unit.fireControl;
+  const fireControl = unit.fireControl;
 
-  if (
-    fireControl.procedureState !==
+  const canIssueCommand =
+    fireControl.procedureState ===
       FIRE_PROCEDURE_STATES
-        .TARGET_DESIGNATED &&
-    fireControl.procedureState !==
-      FIRE_PROCEDURE_STATES.LOADING &&
-    fireControl.procedureState !==
-      FIRE_PROCEDURE_STATES.RELOADING
-  ) {
+        .TARGET_DESIGNATED ||
+    fireControl.loading;
+
+  if (!canIssueCommand) {
     return {
       success: false,
       reason:
@@ -496,8 +426,7 @@ export function issueFireCommand(
     };
   }
 
-  fireControl.state =
-    FIRE_STATES.READY;
+  fireControl.state = FIRE_STATES.READY;
 
   if (fireControl.loaded) {
     const aimingResult =
@@ -510,8 +439,7 @@ export function issueFireCommand(
       success: true,
       automaticLoading: false,
       usedLoadedRound: true,
-      state:
-        aimingResult.state,
+      state: aimingResult.state,
     };
   }
 
@@ -531,18 +459,14 @@ export function issueFireCommand(
 
   setProcedureState(
     unit,
-    FIRE_PROCEDURE_STATES
-      .FIRE_COMMAND,
+    FIRE_PROCEDURE_STATES.FIRE_COMMAND,
     turn,
   );
 
   unit.command = "사격명령";
 
   const loadingResult =
-    beginLoading(
-      unit,
-      turn,
-    );
+    beginLoading(unit, turn);
 
   if (!loadingResult.success) {
     return loadingResult;
@@ -559,12 +483,8 @@ export function issueFireCommand(
   };
 }
 
-function completeLoading(
-  unit,
-  turn,
-) {
-  const fireControl =
-    unit.fireControl;
+function completeLoading(unit, turn) {
+  const fireControl = unit.fireControl;
 
   if (
     unit.destroyed ||
@@ -585,9 +505,7 @@ function completeLoading(
   fireControl.loaded = true;
   fireControl.loadedAmmunition =
     loadedAmmunition;
-
-  fireControl.loadedTurn =
-    turn;
+  fireControl.loadedTurn = turn;
 
   if (!hasFireTarget(unit)) {
     resetAimingState(unit);
@@ -640,21 +558,15 @@ export function updateFireProcedure(
     };
   }
 
-  const fireControl =
-    unit.fireControl;
+  const fireControl = unit.fireControl;
 
   if (
     fireControl.loading &&
-    fireControl.loadStartedTurn !==
-      null &&
-    turn >
-      fireControl.loadStartedTurn
+    fireControl.loadStartedTurn !== null &&
+    turn > fireControl.loadStartedTurn
   ) {
     const loadingResult =
-      completeLoading(
-        unit,
-        turn,
-      );
+      completeLoading(unit, turn);
 
     return {
       changed:
@@ -691,8 +603,7 @@ export function updateFireProcedure(
 
     return {
       changed: true,
-      state:
-        aimingResult.state,
+      state: aimingResult.state,
     };
   }
 
@@ -702,8 +613,7 @@ export function updateFireProcedure(
     isTurretAligned(unit)
   ) {
     fireControl.aiming = true;
-    fireControl.aimStartedTurn =
-      turn;
+    fireControl.aimStartedTurn = turn;
 
     setProcedureState(
       unit,
@@ -723,17 +633,14 @@ export function updateFireProcedure(
   if (
     fireControl.procedureState ===
       FIRE_PROCEDURE_STATES.AIMING &&
-    fireControl.aimStartedTurn !==
-      null &&
-    turn >
-      fireControl.aimStartedTurn
+    fireControl.aimStartedTurn !== null &&
+    turn > fireControl.aimStartedTurn
   ) {
     fireControl.aiming = false;
 
     setProcedureState(
       unit,
-      FIRE_PROCEDURE_STATES
-        .READY_TO_FIRE,
+      FIRE_PROCEDURE_STATES.READY_TO_FIRE,
       turn,
     );
 
@@ -775,8 +682,7 @@ function validateFirePermission(
 
   if (
     !unit.fireControl.loaded ||
-    !unit.fireControl
-      .loadedAmmunition
+    !unit.fireControl.loadedAmmunition
   ) {
     return {
       allowed: false,
@@ -787,8 +693,7 @@ function validateFirePermission(
 
   if (
     unit.fireControl.procedureState !==
-    FIRE_PROCEDURE_STATES
-      .READY_TO_FIRE
+    FIRE_PROCEDURE_STATES.READY_TO_FIRE
   ) {
     return {
       allowed: false,
@@ -797,10 +702,7 @@ function validateFirePermission(
     };
   }
 
-  return canTurretFire(
-    unit,
-    options,
-  );
+  return canTurretFire(unit, options);
 }
 
 function registerShot(
@@ -809,15 +711,13 @@ function registerShot(
   turn,
   permission,
 ) {
-  const fireControl =
-    unit.fireControl;
+  const fireControl = unit.fireControl;
 
   const firedAmmunition =
     fireControl.loadedAmmunition;
 
   fireControl.roundsFired += 1;
-  fireControl.lastFiredTurn =
-    turn;
+  fireControl.lastFiredTurn = turn;
 
   clearLoadedRound(unit);
   resetAimingState(unit);
@@ -828,20 +728,18 @@ function registerShot(
   fireControl.ammunition =
     firedAmmunition;
 
-  const shotResult =
-    resolveShot(
-      runtimeScenario,
-      unit,
-      turn,
-      {
-        aimStability:
-          permission.aimStability,
-
-        movingFirePenalty:
-          permission.movingFirePenalty ??
-          0,
-      },
-    );
+  const shotResult = resolveShot(
+    runtimeScenario,
+    unit,
+    turn,
+    {
+      aimStability:
+        permission.aimStability,
+      movingFirePenalty:
+        permission.movingFirePenalty ??
+        0,
+    },
+  );
 
   fireControl.ammunition =
     selectedAmmunition;
@@ -887,19 +785,15 @@ export function fireSingleShot(
   unit.fireControl.gunnerAutonomous =
     false;
 
-  const shotResult =
-    registerShot(
-      runtimeScenario,
-      unit,
-      turn,
-      permission,
-    );
+  const shotResult = registerShot(
+    runtimeScenario,
+    unit,
+    turn,
+    permission,
+  );
 
   const reloadResult =
-    beginReloading(
-      unit,
-      turn,
-    );
+    beginReloading(unit, turn);
 
   unit.command =
     reloadResult.success
@@ -908,22 +802,16 @@ export function fireSingleShot(
 
   return {
     success: true,
-
     aimStability:
       permission.aimStability,
-
     movingFirePenalty:
       permission.movingFirePenalty ??
       0,
-
     ammunition:
       shotResult.ammunition,
-
     shotResult,
-
     reloadStarted:
       reloadResult.success,
-
     loadingAmmunition:
       reloadResult.ammunition ??
       null,
@@ -956,13 +844,12 @@ export function enableAdjustedFire(
   unit.fireControl.gunnerAutonomous =
     true;
 
-  const shotResult =
-    registerShot(
-      runtimeScenario,
-      unit,
-      turn,
-      permission,
-    );
+  const shotResult = registerShot(
+    runtimeScenario,
+    unit,
+    turn,
+    permission,
+  );
 
   setProcedureState(
     unit,
@@ -970,24 +857,17 @@ export function enableAdjustedFire(
     turn,
   );
 
-  setAdjustedFireAction(
-    unit,
-    turn,
-  );
+  setAdjustedFireAction(unit, turn);
 
   return {
     success: true,
-
     aimStability:
       permission.aimStability,
-
     movingFirePenalty:
       permission.movingFirePenalty ??
       0,
-
     ammunition:
       shotResult.ammunition,
-
     shotResult,
   };
 }
@@ -1025,13 +905,12 @@ export function registerAdjustedShot(
     };
   }
 
-  const shotResult =
-    registerShot(
-      runtimeScenario,
-      unit,
-      turn,
-      permission,
-    );
+  const shotResult = registerShot(
+    runtimeScenario,
+    unit,
+    turn,
+    permission,
+  );
 
   setProcedureState(
     unit,
@@ -1043,17 +922,13 @@ export function registerAdjustedShot(
 
   return {
     success: true,
-
     aimStability:
       permission.aimStability,
-
     movingFirePenalty:
       permission.movingFirePenalty ??
       0,
-
     ammunition:
       shotResult.ammunition,
-
     shotResult,
   };
 }
@@ -1063,17 +938,14 @@ export function ceaseFire(unit) {
     return false;
   }
 
-  const fireControl =
-    unit.fireControl;
+  const fireControl = unit.fireControl;
 
   fireControl.state =
     FIRE_STATES.STOPPED;
 
   fireControl.targetHex = null;
   fireControl.targetUnitId = null;
-
-  fireControl.gunnerAutonomous =
-    false;
+  fireControl.gunnerAutonomous = false;
 
   resetAimingState(unit);
 
@@ -1085,12 +957,11 @@ export function ceaseFire(unit) {
   clearFireAction(unit);
 
   if (!unit.destroyed) {
-    unit.command =
-      fireControl.loading
-        ? "사격 그만 / 장전 중"
-        : fireControl.loaded
-          ? "사격 그만 / 장전 완료"
-          : "사격 그만";
+    unit.command = fireControl.loading
+      ? "사격 그만 / 장전 중"
+      : fireControl.loaded
+        ? "사격 그만 / 장전 완료"
+        : "사격 그만";
   }
 
   return true;
