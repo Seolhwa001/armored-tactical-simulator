@@ -75,20 +75,28 @@ const LOADER_MODE_LABELS = Object.freeze({
   loading: "장전 중 제한 감시",
 });
 
-function createButton(label, options = {}) {
-  const button = document.createElement("button");
+function createButton(
+  label,
+  options = {},
+) {
+  const button =
+    document.createElement("button");
 
   button.type = "button";
   button.className = "command-option";
   button.textContent = label;
-  button.disabled = options.disabled === true;
+  button.disabled =
+    options.disabled === true;
 
   button.classList.toggle(
     "is-selected",
     options.active === true,
   );
 
-  if (options.onClick) {
+  if (
+    typeof options.onClick ===
+    "function"
+  ) {
     button.addEventListener(
       "click",
       options.onClick,
@@ -99,11 +107,18 @@ function createButton(label, options = {}) {
 }
 
 function createSection(title) {
-  const section = document.createElement("section");
-  const heading = document.createElement("h3");
+  const section =
+    document.createElement("section");
 
-  section.className = "command-section";
-  heading.className = "command-section-title";
+  const heading =
+    document.createElement("h3");
+
+  section.className =
+    "command-section";
+
+  heading.className =
+    "command-section-title";
+
   heading.textContent = title;
 
   section.append(heading);
@@ -111,9 +126,15 @@ function createSection(title) {
   return section;
 }
 
-function createStatusRow(label, value) {
-  const row = document.createElement("span");
-  const strong = document.createElement("strong");
+function createStatusRow(
+  label,
+  value,
+) {
+  const row =
+    document.createElement("span");
+
+  const strong =
+    document.createElement("strong");
 
   row.append(`${label}: `);
 
@@ -129,16 +150,23 @@ function createCommandButton(
   onSelect,
   options = {},
 ) {
-  return createButton(command.label, {
-    disabled: options.disabled,
+  return createButton(
+    command.label,
+    {
+      disabled:
+        options.disabled === true,
 
-    onClick: (event) => {
-      onSelect(
-        command,
-        event.currentTarget,
-      );
+      active:
+        options.active === true,
+
+      onClick: (event) => {
+        onSelect(
+          command,
+          event.currentTarget,
+        );
+      },
     },
-  });
+  );
 }
 
 function getObserver(
@@ -202,7 +230,9 @@ function getObserverStateLabel(
   return "육안 감시";
 }
 
-function getCommanderSightLabel(unit) {
+function getCommanderSightLabel(
+  unit,
+) {
   const sight =
     unit.crewObservation
       ?.commanderIndependentSight;
@@ -226,14 +256,21 @@ function getCommanderSightLabel(unit) {
     : "독립 감시 회전 중";
 }
 
-function createTurretStatusPanel(unit) {
-  const panel = document.createElement("div");
-  const status = getTurretStatus(unit);
+function createTurretStatusPanel(
+  unit,
+) {
+  const panel =
+    document.createElement("div");
 
-  panel.className = "turret-status-panel";
+  const status =
+    getTurretStatus(unit);
+
+  panel.className =
+    "turret-status-panel";
 
   if (!status) {
-    panel.textContent = "포탑 제어 기능 없음";
+    panel.textContent =
+      "포탑 제어 기능 없음";
 
     return panel;
   }
@@ -260,17 +297,21 @@ function createTurretStatusPanel(unit) {
   panel.append(
     createStatusRow(
       "구동",
-      TURRET_MODE_LABELS[status.mode] ??
-        status.mode,
+      TURRET_MODE_LABELS[
+        status.mode
+      ] ?? status.mode,
     ),
+
     createStatusRow(
       "안정화",
       stabilizerText,
     ),
+
     createStatusRow(
       "포탑 상태",
       couplingText,
     ),
+
     createStatusRow(
       "주포 정위치",
       stowText,
@@ -278,10 +319,14 @@ function createTurretStatusPanel(unit) {
   );
 
   if (status.warning) {
-    const warning = document.createElement("p");
+    const warning =
+      document.createElement("p");
 
-    warning.className = "turret-warning";
-    warning.textContent = status.warning;
+    warning.className =
+      "turret-warning";
+
+    warning.textContent =
+      status.warning;
 
     panel.append(warning);
   }
@@ -289,14 +334,21 @@ function createTurretStatusPanel(unit) {
   return panel;
 }
 
-function createObservationStatusPanel(unit) {
-  const panel = document.createElement("div");
-  const observation = unit.crewObservation;
+function createObservationStatusPanel(
+  unit,
+) {
+  const panel =
+    document.createElement("div");
 
-  panel.className = "observation-status-panel";
+  const observation =
+    unit.crewObservation;
+
+  panel.className =
+    "observation-status-panel";
 
   if (!observation) {
-    panel.textContent = "승무원 감시 기능 없음";
+    panel.textContent =
+      "승무원 감시 기능 없음";
 
     return panel;
   }
@@ -312,6 +364,7 @@ function createObservationStatusPanel(unit) {
         CREW_ROLES.COMMANDER,
       ),
     ),
+
     createStatusRow(
       "포수",
       getObserverStateLabel(
@@ -319,6 +372,7 @@ function createObservationStatusPanel(unit) {
         CREW_ROLES.GUNNER,
       ),
     ),
+
     createStatusRow(
       "조종수",
       getObserverStateLabel(
@@ -326,6 +380,7 @@ function createObservationStatusPanel(unit) {
         CREW_ROLES.DRIVER,
       ),
     ),
+
     createStatusRow(
       "탄약수",
       getObserverStateLabel(
@@ -333,10 +388,14 @@ function createObservationStatusPanel(unit) {
         CREW_ROLES.LOADER,
       ),
     ),
+
     createStatusRow(
       "CPS",
-      getCommanderSightLabel(unit),
+      getCommanderSightLabel(
+        unit,
+      ),
     ),
+
     createStatusRow(
       "헌터킬러",
       HUNTER_KILLER_LABELS[
@@ -348,7 +407,9 @@ function createObservationStatusPanel(unit) {
   return panel;
 }
 
-function getVehicleSmokeStatus(unit) {
+function getVehicleSmokeStatus(
+  unit,
+) {
   const vehicleSmoke =
     unit.vehicleSmoke;
 
@@ -364,13 +425,15 @@ function getVehicleSmokeStatus(unit) {
   const remainingUses =
     Math.max(
       0,
-      vehicleSmoke.remainingUses ?? 0,
+      vehicleSmoke.remainingUses ??
+        0,
     );
 
   const maximumUses =
     Math.max(
       0,
-      vehicleSmoke.maximumUses ?? 0,
+      vehicleSmoke.maximumUses ??
+        0,
     );
 
   return {
@@ -405,7 +468,8 @@ export function createCommandPanel({
   }
 
   function getControllableUnit() {
-    const unit = getSelectedUnit();
+    const unit =
+      getSelectedUnit();
 
     if (
       !unit ||
@@ -424,23 +488,28 @@ export function createCommandPanel({
 
     clear();
 
-    paragraph.textContent = message;
+    paragraph.textContent =
+      message;
 
-    container.append(paragraph);
+    container.append(
+      paragraph,
+    );
   }
 
   function appendCommandList(
     section,
     commands,
   ) {
-    commands.forEach((command) => {
-      section.append(
-        createCommandButton(
-          command,
-          onCommandSelected,
-        ),
-      );
-    });
+    commands.forEach(
+      (command) => {
+        section.append(
+          createCommandButton(
+            command,
+            onCommandSelected,
+          ),
+        );
+      },
+    );
   }
 
   function renderHull() {
@@ -505,11 +574,14 @@ export function createCommandPanel({
                   !Array.isArray(
                     unit.plannedPath,
                   ) ||
-                  unit.plannedPath.length === 0
+                  unit.plannedPath
+                    .length === 0
                 ),
 
               onClick: () => {
-                onCancelMovement(unit);
+                onCancelMovement(
+                  unit,
+                );
 
                 onStateChanged();
 
@@ -548,7 +620,9 @@ export function createCommandPanel({
       id: "crew-observation",
 
       label:
-        `${CREW_ROLE_LABELS[crewRole]} 구역 지정`,
+        `${CREW_ROLE_LABELS[
+          crewRole
+        ]} 구역 지정`,
 
       needsTarget: true,
       crewRole,
@@ -570,7 +644,10 @@ export function createCommandPanel({
           onMessage(
             crewRole ===
               CREW_ROLES.LOADER
-              ? "탄약수는 해치 개방·비장전 상태에서만 자유 감시구역을 지정할 수 있습니다."
+              ? (
+                  "탄약수는 해치 개방·비장전 상태에서만 " +
+                  "자유 감시구역을 지정할 수 있습니다."
+                )
               : "감시구역을 지정할 수 없습니다.",
           );
 
@@ -580,7 +657,9 @@ export function createCommandPanel({
         onStateChanged();
 
         onMessage(
-          `${CREW_ROLE_LABELS[crewRole]} 감시구역을 지정했습니다.`,
+          `${CREW_ROLE_LABELS[
+            crewRole
+          ]} 감시구역을 지정했습니다.`,
         );
       },
     };
@@ -663,23 +742,26 @@ export function createCommandPanel({
     label,
     description,
   ) {
-    const button =
-      createButton(
-        `${label}: ${description}`,
-        {
-          disabled: true,
-        },
-      );
-
-    return button;
+    return createButton(
+      `${label}: ${description}`,
+      {
+        disabled: true,
+      },
+    );
   }
 
-  function renderObservationSection(unit) {
+  function renderObservationSection(
+    unit,
+  ) {
     const section =
-      createSection("감시구역 할당");
+      createSection(
+        "감시구역 할당",
+      );
 
     section.append(
-      createObservationStatusPanel(unit),
+      createObservationStatusPanel(
+        unit,
+      ),
     );
 
     const commanderAssignable =
@@ -694,6 +776,16 @@ export function createCommandPanel({
         CREW_ROLES.LOADER,
       );
 
+    const commanderSightOperational =
+      unit.crewObservation
+        ?.commanderIndependentSight
+        ?.operational === true;
+
+    const hunterKillerEnabled =
+      unit.crewObservation
+        ?.hunterKiller
+        ?.enabled === true;
+
     section.append(
       createCommandButton(
         createCrewObservationCommand(
@@ -707,16 +799,11 @@ export function createCommandPanel({
       ),
 
       createCommandButton(
-        createHunterKillerCommand(),
+        createCommanderSightCommand(),
         onCommandSelected,
         {
           disabled:
-            unit.crewObservation
-               ?.hunterKiller
-               ?.enabled !== true ||
-            unit.crewObservation
-               ?.commanderIndependentSight
-               ?.operational !== true,
+            !commanderSightOperational,
         },
       ),
 
@@ -746,6 +833,11 @@ export function createCommandPanel({
       createCommandButton(
         createHunterKillerCommand(),
         onCommandSelected,
+        {
+          disabled:
+            !hunterKillerEnabled ||
+            !commanderSightOperational,
+        },
       ),
 
       createCommandButton(
@@ -776,25 +868,70 @@ export function createCommandPanel({
 
       loaderNotice.textContent =
         unit.fireControl?.loading
-          ? "탄약수는 장전 중이므로 측면 잠망경을 통한 제한 감시만 수행합니다."
-          : unit.hatchState !== "open"
-            ? "탄약수는 해치가 닫혀 있어 측면 잠망경 방향으로 자동 감시합니다."
-            : "탄약수 감시구역을 현재 지정할 수 없습니다.";
+          ? (
+              "탄약수는 장전 중이므로 측면 잠망경을 통한 " +
+              "제한 감시만 수행합니다."
+            )
+          : unit.hatchState !==
+              "open"
+            ? (
+                "탄약수는 해치가 닫혀 있어 측면 잠망경 " +
+                "방향으로 자동 감시합니다."
+              )
+            : (
+                "탄약수 감시구역을 현재 지정할 수 없습니다."
+              );
 
       section.append(
         loaderNotice,
       );
     }
 
+    if (!commanderSightOperational) {
+      const sightNotice =
+        document.createElement("p");
+
+      sightNotice.className =
+        "turret-warning";
+
+      sightNotice.textContent =
+        "CPS가 고장 또는 사용 불가 상태이므로 독립 감시와 헌터킬러를 사용할 수 없습니다.";
+
+      section.append(
+        sightNotice,
+      );
+    } else if (
+      !hunterKillerEnabled
+    ) {
+      const hunterKillerNotice =
+        document.createElement("p");
+
+      hunterKillerNotice.className =
+        "turret-warning";
+
+      hunterKillerNotice.textContent =
+        "이 차량은 헌터킬러 기능을 사용할 수 없습니다.";
+
+      section.append(
+        hunterKillerNotice,
+      );
+    }
+
     return section;
   }
 
-  function renderTurretControlSection(unit) {
+  function renderTurretControlSection(
+    unit,
+  ) {
     const section =
-      createSection("포·포탑 구동");
+      createSection(
+        "포·포탑 구동",
+      );
 
     section.append(
-      createTurretStatusPanel(unit),
+      createTurretStatusPanel(
+        unit,
+      ),
     );
 
     section.append(
@@ -803,7 +940,8 @@ export function createCommandPanel({
         {
           active:
             unit.turretControl
-              ?.lockedToHull === true,
+              ?.lockedToHull ===
+            true,
 
           onClick: () => {
             const result =
@@ -813,12 +951,15 @@ export function createCommandPanel({
               );
 
             if (!result.success) {
-              onMessage(result.reason);
+              onMessage(
+                result.reason,
+              );
 
               return;
             }
 
             onStateChanged();
+
             renderTurret();
 
             onMessage(
@@ -839,54 +980,69 @@ export function createCommandPanel({
 
     Object.values(
       TURRET_MODES,
-    ).forEach((mode) => {
-      modeGroup.append(
-        createButton(
-          TURRET_MODE_LABELS[mode],
-          {
-            active:
-              unit.turretControl
-                ?.mode === mode,
+    ).forEach(
+      (mode) => {
+        modeGroup.append(
+          createButton(
+            TURRET_MODE_LABELS[
+              mode
+            ],
+            {
+              active:
+                unit.turretControl
+                  ?.mode === mode,
 
-            onClick: () => {
-              const result =
-                setTurretMode(
-                  unit,
-                  mode,
-                );
+              onClick: () => {
+                const result =
+                  setTurretMode(
+                    unit,
+                    mode,
+                  );
 
-              if (!result.success) {
+                if (!result.success) {
+                  onMessage(
+                    result.reason,
+                  );
+
+                  return;
+                }
+
+                onStateChanged();
+
+                renderTurret();
+
                 onMessage(
-                  result.reason,
+                  result.warning ??
+                    `${TURRET_MODE_LABELS[
+                      mode
+                    ]} 선택`,
                 );
-
-                return;
-              }
-
-              onStateChanged();
-              renderTurret();
-
-              onMessage(
-                result.warning ??
-                  `${TURRET_MODE_LABELS[mode]} 선택`,
-              );
+              },
             },
-          },
-        ),
-      );
-    });
+          ),
+        );
+      },
+    );
 
-    section.append(modeGroup);
+    section.append(
+      modeGroup,
+    );
 
     return section;
   }
 
-  function renderVehicleSmokeSection(unit) {
+  function renderVehicleSmokeSection(
+    unit,
+  ) {
     const section =
-      createSection("자체연막");
+      createSection(
+        "자체연막",
+      );
 
     const status =
-      getVehicleSmokeStatus(unit);
+      getVehicleSmokeStatus(
+        unit,
+      );
 
     section.append(
       createButton(
@@ -910,7 +1066,9 @@ export function createCommandPanel({
             }
 
             const result =
-              onDeployVehicleSmoke(unit);
+              onDeployVehicleSmoke(
+                unit,
+              );
 
             if (
               !result ||
@@ -930,9 +1088,11 @@ export function createCommandPanel({
 
             onMessage(
               result.reason ??
-                `자체연막 전개 완료. 남은 횟수 ` +
-                  `${result.remainingUses}` +
-                  `/${result.maximumUses}`,
+                (
+                  "자체연막 전개 완료. " +
+                  `남은 횟수 ${result.remainingUses}` +
+                  `/${result.maximumUses}`
+                ),
             );
 
             renderTurret();
@@ -951,7 +1111,9 @@ export function createCommandPanel({
       unavailable.textContent =
         "이 차량에는 자체연막 기능이 없습니다.";
 
-      section.append(unavailable);
+      section.append(
+        unavailable,
+      );
     } else if (
       status.remainingUses <= 0
     ) {
@@ -964,7 +1126,9 @@ export function createCommandPanel({
       depleted.textContent =
         "자체연막을 모두 사용했습니다.";
 
-      section.append(depleted);
+      section.append(
+        depleted,
+      );
     }
 
     return section;
@@ -993,9 +1157,17 @@ export function createCommandPanel({
     }
 
     container.append(
-      renderObservationSection(unit),
-      renderTurretControlSection(unit),
-      renderVehicleSmokeSection(unit),
+      renderObservationSection(
+        unit,
+      ),
+
+      renderTurretControlSection(
+        unit,
+      ),
+
+      renderVehicleSmokeSection(
+        unit,
+      ),
     );
   }
 
@@ -1013,8 +1185,11 @@ export function createCommandPanel({
     setPersistentAction(
       unit,
       {
-        type: UNIT_ACTIONS.RECON,
-        label: "360도 정찰",
+        type:
+          UNIT_ACTIONS.RECON,
+
+        label:
+          "360도 정찰",
       },
       getTurn(),
     );
@@ -1058,7 +1233,9 @@ export function createCommandPanel({
     showMessage,
 
     refresh(category) {
-      this.render(category);
+      this.render(
+        category,
+      );
     },
   };
-}
+        }
