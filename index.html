@@ -1,3 +1,5 @@
+<!-- index.html — 전체 교체, 1~343행 -->
+
 <!doctype html>
 <html lang="ko">
 <head>
@@ -8,78 +10,124 @@
     content="width=device-width, initial-scale=1, viewport-fit=cover"
   >
 
-  <meta name="theme-color" content="#0b1210">
+  <meta
+    name="theme-color"
+    content="#0b1210"
+  >
 
   <meta
     name="description"
     content="Armored Tactical Simulator mobile prototype"
   >
 
-  <title>ATS — Armored Tactical Simulator</title>
+  <title>
+    ATS — Armored Tactical Simulator
+  </title>
 
   <link
     rel="stylesheet"
-    href="./src/styles.css?v=0.3.4"
+    href="./src/styles.css?v=0.3.6"
   >
 
-<script type="module">
-  const errorBox = document.createElement("pre");
+  <script type="module">
+    const errorBox =
+      document.createElement(
+        "pre",
+      );
 
-  errorBox.style.position = "fixed";
-  errorBox.style.inset = "12px";
-  errorBox.style.zIndex = "99999";
-  errorBox.style.display = "none";
-  errorBox.style.padding = "14px";
-  errorBox.style.overflow = "auto";
-  errorBox.style.whiteSpace = "pre-wrap";
-  errorBox.style.background = "#240b0b";
-  errorBox.style.color = "#ffb4b4";
-  errorBox.style.border = "1px solid #ff6b6b";
-  errorBox.style.borderRadius = "10px";
+    errorBox.style.position =
+      "fixed";
 
-  document.body.append(errorBox);
+    errorBox.style.inset =
+      "12px";
 
-  function showError(error) {
-    errorBox.style.display = "block";
-    errorBox.textContent =
-      "ATS 실행 오류\n\n" +
-      (error?.stack ?? error?.message ?? String(error));
-  }
+    errorBox.style.zIndex =
+      "99999";
 
-  window.addEventListener("error", (event) => {
-    showError(event.error ?? event.message);
-  });
+    errorBox.style.display =
+      "none";
 
-  window.addEventListener(
-    "unhandledrejection",
-    (event) => {
-      showError(event.reason);
-    },
-  );
+    errorBox.style.padding =
+      "14px";
 
-  try {
-    await import(
-      `./src/app.js?v=0.3.5-${Date.now()}`
+    errorBox.style.overflow =
+      "auto";
+
+    errorBox.style.whiteSpace =
+      "pre-wrap";
+
+    errorBox.style.background =
+      "#240b0b";
+
+    errorBox.style.color =
+      "#ffb4b4";
+
+    errorBox.style.border =
+      "1px solid #ff6b6b";
+
+    errorBox.style.borderRadius =
+      "10px";
+
+    document.body.append(
+      errorBox,
     );
-  } catch (error) {
-    showError(error);
-  }
-</script>
+
+    function showError(error) {
+      errorBox.style.display =
+        "block";
+
+      errorBox.textContent =
+        "ATS 실행 오류\n\n" +
+        (
+          error?.stack ??
+          error?.message ??
+          String(error)
+        );
+    }
+
+    window.addEventListener(
+      "error",
+      (event) => {
+        showError(
+          event.error ??
+          event.message,
+        );
+      },
+    );
+
+    window.addEventListener(
+      "unhandledrejection",
+      (event) => {
+        showError(
+          event.reason,
+        );
+      },
+    );
+
+    try {
+      await import(
+        "./src/app.js?v=0.3.6"
+      );
+    } catch (error) {
+      showError(error);
+    }
+  </script>
 </head>
 
 <body>
-  <div id="app" class="app-shell">
-
+  <div
+    id="app"
+    class="app-shell"
+  >
     <main
       id="menu-screen"
       class="screen screen--active"
       aria-labelledby="game-title"
     >
       <section class="menu-screen">
-
         <header class="menu-screen__header">
           <p class="eyebrow">
-            ATS v0.3.3
+            ATS v0.3.6
           </p>
 
           <h1 id="game-title">
@@ -119,7 +167,6 @@
             프로젝트 정보
           </button>
         </nav>
-
       </section>
     </main>
 
@@ -130,9 +177,7 @@
       hidden
     >
       <section class="battle-layout">
-
         <header class="battle-header">
-
           <button
             class="icon-button"
             type="button"
@@ -167,13 +212,12 @@
               class="icon-button"
               type="button"
               data-action="center-camera"
-              aria-label="선택 객체 위치로 지도 이동"
-              title="선택 객체 중앙 표시"
+              aria-label="자차 위치로 지도 이동"
+              title="자차 중앙 표시"
             >
               ◎
             </button>
           </div>
-
         </header>
 
         <section
@@ -224,11 +268,9 @@
 
         <section
           class="command-dock"
-          aria-label="전투 명령"
+          aria-label="자차 전투 명령"
         >
-
           <div class="unit-summary">
-
             <div>
               <span>
                 현재 조작
@@ -258,43 +300,35 @@
                 정상
               </strong>
             </div>
-
           </div>
 
-          <div class="command-categories">
-
+          <div
+            class="command-categories command-categories--vehicle"
+            aria-label="명령 분야"
+          >
             <button
               class="command-category"
               type="button"
-              data-command-category="observation"
+              data-command-category="hull"
             >
-              감시·정찰
+              차체
             </button>
 
             <button
               class="command-category"
               type="button"
-              data-command-category="movement"
+              data-command-category="turret"
             >
-              기동
+              포탑
             </button>
 
             <button
               class="command-category"
               type="button"
-              data-command-category="combat"
+              data-command-category="fire"
             >
               사격
             </button>
-
-            <button
-              class="command-category"
-              type="button"
-              data-command-category="survival"
-            >
-              생존
-            </button>
-
           </div>
 
           <div
@@ -303,7 +337,7 @@
             aria-live="polite"
           >
             <p>
-              명령 종류를 선택하세요.
+              차체, 포탑 또는 사격 명령 분야를 선택하세요.
             </p>
           </div>
 
@@ -315,9 +349,7 @@
           >
             명령 실행 / 다음 턴
           </button>
-
         </section>
-
       </section>
     </main>
 
@@ -326,7 +358,6 @@
       class="app-dialog"
     >
       <form method="dialog">
-
         <header class="dialog-header">
           <h2>
             설정
@@ -342,7 +373,6 @@
         </header>
 
         <div class="dialog-content">
-
           <label class="setting-row">
             <span>
               난이도
@@ -380,9 +410,7 @@
               type="checkbox"
             >
           </label>
-
         </div>
-
       </form>
     </dialog>
 
@@ -391,7 +419,6 @@
       class="app-dialog"
     >
       <form method="dialog">
-
         <header class="dialog-header">
           <h2>
             프로젝트 정보
@@ -414,13 +441,11 @@
           </p>
 
           <p>
-            현재 단계: Sprint 3.3
+            현재 단계: Sprint 3.4
           </p>
         </div>
-
       </form>
     </dialog>
-
   </div>
 
   <noscript>
