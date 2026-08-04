@@ -1,4 +1,12 @@
-// src/controllers/scenarioController.js — 신규 파일, 예상 1~193행
+// ============================================================
+// ATS PROJECT
+// File      : src/controllers/scenarioController.js
+// Sprint    : 3.9.1
+// Revision  : R2
+// Build     : 2026-08-05
+// Type      : FULL REPLACEMENT
+// Purpose   : Scenario initialization and initial crew synchronization
+// ============================================================
 
 export function createScenarioController({
   state,
@@ -15,6 +23,7 @@ export function createScenarioController({
   generateTerrain,
   getAvailablePlacementHexes,
   ensureUnitHexesPassable,
+  synchronizeCrewObservationDirections,
   resetFog,
   clearEffects,
   updateDetection,
@@ -62,7 +71,8 @@ export function createScenarioController({
     const selected =
       candidates[
         Math.floor(
-          Math.random() * candidates.length,
+          Math.random() *
+            candidates.length,
         )
       ];
 
@@ -88,13 +98,17 @@ export function createScenarioController({
 
     const occupied = new Set();
 
-    const friendlies = getUnits().filter(
-      (unit) => unit.side === "friendly",
-    );
+    const friendlies =
+      getUnits().filter(
+        (unit) =>
+          unit.side === "friendly",
+      );
 
-    const enemies = getUnits().filter(
-      (unit) => unit.side === "enemy",
-    );
+    const enemies =
+      getUnits().filter(
+        (unit) =>
+          unit.side === "enemy",
+      );
 
     friendlies.forEach((unit) => {
       Object.assign(
@@ -133,6 +147,29 @@ export function createScenarioController({
     });
   }
 
+  function synchronizeInitialCrewObservation() {
+    if (
+      typeof synchronizeCrewObservationDirections !==
+      "function"
+    ) {
+      return;
+    }
+
+    getUnits()
+      .filter(
+        (unit) =>
+          unit.type === "tank" &&
+          !unit.destroyed &&
+          unit.crewObservation,
+      )
+      .forEach((unit) => {
+        synchronizeCrewObservationDirections(
+          unit,
+          state.turn,
+        );
+      });
+  }
+
   function initializeScenario({
     restart = false,
   } = {}) {
@@ -142,13 +179,15 @@ export function createScenarioController({
     });
 
     state.runtimeScenario =
-      restart && state.runtimeScenario
+      restart &&
+      state.runtimeScenario
         ? restartRuntimeScenario(
             state.runtimeScenario,
           )
         : loadScenario();
 
-    state.runtimeScenario.smokeAreas = [];
+    state.runtimeScenario.smokeAreas =
+      [];
 
     randomizeUnitPositions();
 
@@ -158,7 +197,9 @@ export function createScenarioController({
     );
 
     state.turn = 1;
-    state.runtimeScenario.turn = 1;
+
+    state.runtimeScenario.turn =
+      state.turn;
 
     const playerUnit = getPlayerUnit(
       state.runtimeScenario,
@@ -172,6 +213,8 @@ export function createScenarioController({
 
     state.selectedCommand = null;
     state.selectedHex = null;
+
+    synchronizeInitialCrewObservation();
 
     resetFog(state.fog);
     clearEffects(state.effects);
@@ -191,7 +234,8 @@ export function createScenarioController({
     mapRenderer.invalidateFog();
 
     if (turnLabel) {
-      turnLabel.textContent = "TURN 1";
+      turnLabel.textContent =
+        "TURN 1";
     }
 
     updateSummary();
@@ -217,11 +261,13 @@ export function createScenarioController({
 
     state.camera.x =
       viewport.width / 2 -
-      point.x * state.camera.zoom;
+      point.x *
+        state.camera.zoom;
 
     state.camera.y =
       viewport.height / 2 -
-      point.y * state.camera.zoom;
+      point.y *
+        state.camera.zoom;
 
     return true;
   }
