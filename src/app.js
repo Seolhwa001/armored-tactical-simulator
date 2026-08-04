@@ -5,11 +5,23 @@ import {
 } from "./engine/movement.js";
 
 import {
+  AMMUNITION_TYPES,
   DETECTION_STAGES,
-  loadScenario,
+  FIRE_STATES,
+  UNIT_ACTIONS,
+  applyReconByFire,
+  ceaseFire,
+  enableAdjustedFire,
+  fireSingleShot,
   getPlayerUnit,
-  updateDetection,
   isUnitVisible,
+  loadScenario,
+  processPersistentActions,
+  randomizeScenarioPositions,
+  restartScenario,
+  setFireTarget,
+  setPersistentAction,
+  updateDetection,
 } from "./engine/scenarioRuntime.js";
 
 const HEX_RADIUS = 28;
@@ -78,21 +90,106 @@ const TERRAIN_TYPES = {
   },
 };
 
-const runtimeScenario = loadScenario();
-const playerUnit = getPlayerUnit(runtimeScenario);
+const OBSERVATION_COMMANDS = [
+  {
+    id: "observation",
+    label: "감시",
+    needsTarget: true,
+  },
+  {
+    id: "recon",
+    label: "정찰",
+    needsTarget: false,
+  },
+  {
+    id: "recon-by-fire",
+    label: "화력수색",
+    needsTarget: true,
+  },
+];
+
+const MOVEMENT_COMMANDS = [
+  {
+    id: "normal-move",
+    label: "일반이동",
+    needsTarget: true,
+  },
+  {
+    id: "fire-maneuver",
+    label: "사격기동",
+    needsTarget: true,
+  },
+  {
+    id: "evasive-maneuver",
+    label: "회피기동",
+    needsTarget: true,
+  },
+  {
+    id: "retreat",
+    label: "퇴각",
+    needsTarget: true,
+  },
+];
+
+const SURVIVAL_COMMANDS = [
+  {
+    id: "concealment",
+    label: "은폐·엄폐",
+    needsTarget: false,
+  },
+  {
+    id: "vehicle-smoke",
+    label: "자체연막",
+    needsTarget: false,
+  },
+  {
+    id: "change-position",
+    label: "위치변경",
+    needsTarget: true,
+  },
+  {
+    id: "cancel-movement",
+    label: "이동취소",
+    needsTarget: false,
+  },
+];
+
+const AMMUNITION_LABELS = {
+  [AMMUNITION_TYPES.APFSDS]: "날탄",
+  [AMMUNITION_TYPES.HEAT]: "대탄",
+  [AMMUNITION_TYPES.CANISTER]: "벌집탄",
+  [AMMUNITION_TYPES.SMOKE]: "연막탄",
+};
+
+const MOVEMENT_COMMAND_IDS = new Set([
+  "normal-move",
+  "fire-maneuver",
+  "evasive-maneuver",
+  "retreat",
+  "change-position",
+]);
 
 const state = {
+  runtimeScenario: null,
+  units: [],
+  terrain: new Map(),
+
   turn: 1,
   activeScreen: "menu",
   activeCategory: null,
   selectedCommand: null,
-  selectedUnitId: playerUnit?.id ?? null,
+  selectedUnitId: null,
   selectedHex: null,
+
   difficulty: "standard",
   developerMode: false,
 
-  units: runtimeScenario.units,
-  terrain: new Map(),
+  fireProcedure: {
+    active: false,
+    ammunition: AMMUNITION_TYPES.APFSDS,
+    targetHex: null,
+    targetUnitId: null,
+  },
 
   camera: {
     x: 0,
@@ -107,103 +204,6 @@ const state = {
     moved: false,
   },
 };
-
-const commandGroups = {
-  observation: [
-    {
-      id: "observation",
-      label: "감시",
-      needsTarget: true,
-    },
-    {
-      id: "recon",
-      label: "정찰",
-      needsTarget: true,
-    },
-    {
-      id: "recon-by-fire",
-      label: "화력수색",
-      needsTarget: true,
-    },
-  ],
-
-  movement: [
-    {
-      id: "normal-move",
-      label: "일반이동",
-      needsTarget: true,
-    },
-    {
-      id: "fire-maneuver",
-      label: "사격기동",
-      needsTarget: true,
-    },
-    {
-      id: "evasive-maneuver",
-      label: "회피기동",
-      needsTarget: true,
-    },
-    {
-      id: "retreat",
-      label: "퇴각",
-      needsTarget: true,
-    },
-  ],
-
-  combat: [
-    {
-      id: "fire-command",
-      label: "사격명령",
-      needsTarget: true,
-    },
-    {
-      id: "fire",
-      label: "쏴",
-      needsTarget: false,
-    },
-    {
-      id: "fire-adjust",
-      label: "쏴-수정",
-      needsTarget: false,
-    },
-    {
-      id: "cease-fire",
-      label: "사격 그만",
-      needsTarget: false,
-    },
-  ],
-
-  survival: [
-    {
-      id: "concealment",
-      label: "은폐·엄폐",
-      needsTarget: false,
-    },
-    {
-      id: "vehicle-smoke",
-      label: "자체연막",
-      needsTarget: false,
-    },
-    {
-      id: "change-position",
-      label: "위치변경",
-      needsTarget: true,
-    },
-    {
-      id: "cancel-movement",
-      label: "이동취소",
-      needsTarget: false,
-    },
-  ],
-};
-
-const movementCommandIds = new Set([
-  "normal-move",
-  "fire-maneuver",
-  "evasive-maneuver",
-  "retreat",
-  "change-position",
-]);
 
 const elements = {
   menuScreen: document.querySelector(
@@ -278,17 +278,27 @@ function terrainKey(column, row) {
   return `${column},${row}`;
 }
 
-function seededValue(column, row) {
+function seededValue(
+  column,
+  row,
+  seed,
+) {
   const value =
     Math.sin(
       column * 12.9898 +
-        row * 78.233,
+        row * 78.233 +
+        seed * 31.719,
     ) * 43758.5453;
 
   return value - Math.floor(value);
 }
 
 function createTerrain() {
+  const seed =
+    Math.floor(
+      Math.random() * 100000,
+    );
+
   state.terrain.clear();
 
   for (
@@ -301,10 +311,12 @@ function createTerrain() {
       column <= MAP_COLUMNS;
       column += 1
     ) {
-      const random = seededValue(
-        column,
-        row,
-      );
+      const random =
+        seededValue(
+          column,
+          row,
+          seed,
+        );
 
       let type = "open";
 
@@ -339,6 +351,7 @@ function createTerrain() {
               seededValue(
                 column + 17,
                 row - 9,
+                seed,
               ) *
                 35,
           ),
@@ -346,7 +359,30 @@ function createTerrain() {
       );
     }
   }
+}
 
+function getAvailablePlacementHexes() {
+  return Array.from(
+    state.terrain.values(),
+  )
+    .filter((terrain) => {
+      const terrainType =
+        TERRAIN_TYPES[
+          terrain.type
+        ];
+
+      return Number.isFinite(
+        terrainType.movementCost,
+      );
+    })
+    .map((terrain) => ({
+      column: terrain.column,
+      row: terrain.row,
+      passable: true,
+    }));
+}
+
+function ensureUnitHexesPassable() {
   state.units.forEach((unit) => {
     const terrain =
       state.terrain.get(
@@ -362,10 +398,123 @@ function createTerrain() {
   });
 }
 
+function initializeScenario() {
+  createTerrain();
+
+  state.runtimeScenario =
+    loadScenario();
+
+  randomizeScenarioPositions(
+    state.runtimeScenario,
+    getAvailablePlacementHexes(),
+    {
+      minimumFriendlyEnemyDistance: 8,
+    },
+  );
+
+  state.units =
+    state.runtimeScenario.units;
+
+  state.turn = 1;
+  state.runtimeScenario.turn = 1;
+
+  const player =
+    getPlayerUnit(
+      state.runtimeScenario,
+    );
+
+  state.selectedUnitId =
+    player?.id ?? null;
+
+  state.selectedHex = null;
+  state.selectedCommand = null;
+  state.activeCategory = null;
+
+  resetFireProcedure();
+
+  ensureUnitHexesPassable();
+
+  updateDetection(
+    state.runtimeScenario,
+    state.turn,
+  );
+
+  elements.turnLabel.textContent =
+    "TURN 1";
+
+  updateSelectedUnitSummary();
+}
+
+function restartCurrentScenario() {
+  createTerrain();
+
+  state.runtimeScenario =
+    restartScenario(
+      state.runtimeScenario,
+      {
+        availableHexes:
+          getAvailablePlacementHexes(),
+
+        minimumFriendlyEnemyDistance: 8,
+      },
+    );
+
+  state.units =
+    state.runtimeScenario.units;
+
+  state.turn = 1;
+  state.runtimeScenario.turn = 1;
+
+  const player =
+    getPlayerUnit(
+      state.runtimeScenario,
+    );
+
+  state.selectedUnitId =
+    player?.id ?? null;
+
+  state.selectedHex = null;
+  state.selectedCommand = null;
+  state.activeCategory = null;
+
+  resetFireProcedure();
+
+  ensureUnitHexesPassable();
+
+  updateDetection(
+    state.runtimeScenario,
+    state.turn,
+  );
+
+  elements.turnLabel.textContent =
+    "TURN 1";
+
+  elements.commandOptions.replaceChildren();
+
+  const message =
+    document.createElement("p");
+
+  message.textContent =
+    "명령 종류를 선택하세요.";
+
+  elements.commandOptions.append(
+    message,
+  );
+
+  updateSelectedUnitSummary();
+  centerCamera();
+  renderMap();
+
+  setMapMessage(
+    "시나리오를 다시 시작했습니다.",
+  );
+}
+
 function getSelectedUnit() {
   return state.units.find(
     (unit) =>
-      unit.id === state.selectedUnitId,
+      unit.id ===
+      state.selectedUnitId,
   );
 }
 
@@ -373,6 +522,15 @@ function updateSelectedUnitSummary() {
   const unit = getSelectedUnit();
 
   if (!unit) {
+    elements.selectedUnitLabel.textContent =
+      "없음";
+
+    elements.currentCommandLabel.textContent =
+      "대기";
+
+    elements.unitConditionLabel.textContent =
+      "-";
+
     return;
   }
 
@@ -427,16 +585,21 @@ function setInterfaceText() {
     )
     .forEach((button) => {
       const category =
-        button.dataset.commandCategory;
+        button.dataset
+          .commandCategory;
 
       button.textContent =
-        labels[category] ?? category;
+        labels[category] ??
+        category;
     });
 }
 
 function renderCommandOptions(category) {
-  state.activeCategory = category;
-  state.selectedCommand = null;
+  state.activeCategory =
+    category;
+
+  state.selectedCommand =
+    null;
 
   document
     .querySelectorAll(
@@ -445,19 +608,35 @@ function renderCommandOptions(category) {
     .forEach((button) => {
       button.classList.toggle(
         "is-active",
-        button.dataset.commandCategory ===
+        button.dataset
+          .commandCategory ===
           category,
       );
     });
 
-  elements.commandOptions.replaceChildren();
+  if (category === "combat") {
+    renderFireProcedure();
+    return;
+  }
 
-  const commands =
-    commandGroups[category] ?? [];
+  const commands = {
+    observation:
+      OBSERVATION_COMMANDS,
+
+    movement:
+      MOVEMENT_COMMANDS,
+
+    survival:
+      SURVIVAL_COMMANDS,
+  }[category] ?? [];
+
+  elements.commandOptions.replaceChildren();
 
   commands.forEach((command) => {
     const button =
-      document.createElement("button");
+      document.createElement(
+        "button",
+      );
 
     button.type = "button";
     button.className =
@@ -482,11 +661,265 @@ function renderCommandOptions(category) {
   });
 }
 
+function resetFireProcedure() {
+  state.fireProcedure = {
+    active: false,
+    ammunition:
+      AMMUNITION_TYPES.APFSDS,
+    targetHex: null,
+    targetUnitId: null,
+  };
+}
+
+function renderFireProcedure() {
+  elements.commandOptions.replaceChildren();
+
+  const unit =
+    getSelectedUnit();
+
+  if (
+    !unit ||
+    unit.side !== "friendly" ||
+    !unit.fireControl
+  ) {
+    const message =
+      document.createElement("p");
+
+    message.textContent =
+      "선택 객체는 사격 절차를 사용할 수 없습니다.";
+
+    elements.commandOptions.append(
+      message,
+    );
+
+    return;
+  }
+
+  const container =
+    document.createElement("div");
+
+  container.className =
+    "fire-procedure";
+
+  const commandButton =
+    createProcedureButton(
+      "1. 사격명령",
+      state.fireProcedure.active,
+      () => {
+        state.fireProcedure.active =
+          true;
+
+        state.selectedCommand = {
+          id: "fire-target",
+          label: "사격명령",
+          needsTarget: true,
+        };
+
+        unit.command =
+          "사격명령";
+
+        updateSelectedUnitSummary();
+
+        setMapMessage(
+          "탄종을 선택한 후 목표 헥스를 지정하세요.",
+        );
+
+        renderFireProcedure();
+      },
+    );
+
+  container.append(
+    commandButton,
+  );
+
+  const ammunitionGroup =
+    document.createElement("div");
+
+  ammunitionGroup.className =
+    "fire-ammunition-group";
+
+  Object.entries(
+    AMMUNITION_LABELS,
+  ).forEach(
+    ([ammunition, label]) => {
+      const button =
+        createProcedureButton(
+          label,
+          state.fireProcedure
+            .ammunition ===
+            ammunition,
+          () => {
+            state.fireProcedure.ammunition =
+              ammunition;
+
+            renderFireProcedure();
+          },
+        );
+
+      button.disabled =
+        !state.fireProcedure.active;
+
+      ammunitionGroup.append(
+        button,
+      );
+    },
+  );
+
+  container.append(
+    ammunitionGroup,
+  );
+
+  const targetText =
+    document.createElement("div");
+
+  targetText.className =
+    "fire-target-status";
+
+  targetText.textContent =
+    state.fireProcedure.targetHex
+      ? `목표: ${state.fireProcedure.targetHex.column}, ${state.fireProcedure.targetHex.row}`
+      : "목표: 미지정";
+
+  container.append(
+    targetText,
+  );
+
+  const fireButton =
+    createProcedureButton(
+      "쏴",
+      false,
+      () => {
+        const fired =
+          fireSingleShot(
+            unit,
+            state.turn,
+          );
+
+        if (!fired) {
+          setMapMessage(
+            "사격 목표가 지정되지 않았습니다.",
+          );
+
+          return;
+        }
+
+        setMapMessage(
+          `${AMMUNITION_LABELS[unit.fireControl.ammunition]} 1발 발사`,
+        );
+
+        updateSelectedUnitSummary();
+        renderFireProcedure();
+        renderMap();
+      },
+    );
+
+  fireButton.disabled =
+    !unit.fireControl.targetHex;
+
+  container.append(
+    fireButton,
+  );
+
+  const adjustButton =
+    createProcedureButton(
+      "쏴-수정",
+      unit.fireControl.state ===
+        FIRE_STATES.ADJUST,
+      () => {
+        const enabled =
+          enableAdjustedFire(
+            unit,
+            state.turn,
+          );
+
+        if (!enabled) {
+          setMapMessage(
+            "사격 목표가 지정되지 않았습니다.",
+          );
+
+          return;
+        }
+
+        setMapMessage(
+          "포수 자율사격을 시작했습니다.",
+        );
+
+        updateSelectedUnitSummary();
+        renderFireProcedure();
+        renderMap();
+      },
+    );
+
+  adjustButton.disabled =
+    !unit.fireControl.targetHex;
+
+  container.append(
+    adjustButton,
+  );
+
+  const ceaseButton =
+    createProcedureButton(
+      "사격그만",
+      unit.fireControl.state ===
+        FIRE_STATES.STOPPED,
+      () => {
+        ceaseFire(unit);
+
+        resetFireProcedure();
+
+        setMapMessage(
+          "모든 사격과 장전을 중지했습니다.",
+        );
+
+        updateSelectedUnitSummary();
+        renderFireProcedure();
+        renderMap();
+      },
+    );
+
+  container.append(
+    ceaseButton,
+  );
+
+  elements.commandOptions.append(
+    container,
+  );
+}
+
+function createProcedureButton(
+  label,
+  active,
+  handler,
+) {
+  const button =
+    document.createElement("button");
+
+  button.type = "button";
+
+  button.className =
+    "command-option";
+
+  button.classList.toggle(
+    "is-selected",
+    active,
+  );
+
+  button.textContent = label;
+
+  button.addEventListener(
+    "click",
+    handler,
+  );
+
+  return button;
+}
+
 function selectCommand(
   command,
   selectedButton,
 ) {
-  const unit = getSelectedUnit();
+  const unit =
+    getSelectedUnit();
 
   if (
     !unit ||
@@ -495,7 +928,8 @@ function selectCommand(
     return;
   }
 
-  state.selectedCommand = command;
+  state.selectedCommand =
+    command;
 
   document
     .querySelectorAll(
@@ -504,7 +938,8 @@ function selectCommand(
     .forEach((button) => {
       button.classList.toggle(
         "is-selected",
-        button === selectedButton,
+        button ===
+          selectedButton,
       );
     });
 
@@ -514,7 +949,8 @@ function selectCommand(
   ) {
     cancelUnitMovement(unit);
 
-    state.selectedCommand = null;
+    state.selectedCommand =
+      null;
 
     updateSelectedUnitSummary();
 
@@ -527,36 +963,77 @@ function selectCommand(
   }
 
   if (
-    command.id === "cease-fire" ||
-    command.id === "vehicle-smoke" ||
-    !command.needsTarget
+    command.id === "recon"
   ) {
-    unit.command = command.label;
+    setPersistentAction(
+      unit,
+      {
+        type:
+          UNIT_ACTIONS.RECON,
+
+        label: "정찰",
+      },
+      state.turn,
+    );
 
     updateSelectedUnitSummary();
 
     setMapMessage(
-      `${command.label} 명령이 예약되었습니다.`,
+      "주변 360도 정찰을 시작했습니다.",
+    );
+
+    renderMap();
+    return;
+  }
+
+  if (
+    command.id ===
+      "vehicle-smoke" ||
+    command.id ===
+      "concealment"
+  ) {
+    unit.command =
+      command.label;
+
+    updateSelectedUnitSummary();
+
+    setMapMessage(
+      `${command.label} 행동을 시작했습니다.`,
     );
 
     return;
   }
 
-  setMapMessage(
-    `${command.label}: 지도에서 목표 육각형을 선택하세요.`,
-  );
+  if (command.needsTarget) {
+    setMapMessage(
+      `${command.label}: 지도에서 목표 헥스를 선택하세요.`,
+    );
+
+    return;
+  }
+
+  unit.command =
+    command.label;
+
+  updateSelectedUnitSummary();
 }
 
-function hexToWorld(column, row) {
+function hexToWorld(
+  column,
+  row,
+) {
   const horizontal =
-    Math.sqrt(3) * HEX_RADIUS;
+    Math.sqrt(3) *
+    HEX_RADIUS;
 
   return {
     x:
       column * horizontal +
-      (row % 2 === 0
-        ? 0
-        : horizontal / 2),
+      (
+        row % 2 === 0
+          ? 0
+          : horizontal / 2
+      ),
 
     y:
       row *
@@ -565,12 +1042,36 @@ function hexToWorld(column, row) {
   };
 }
 
+function calculateDirection(
+  from,
+  to,
+) {
+  const start =
+    hexToWorld(
+      from.column,
+      from.row,
+    );
+
+  const end =
+    hexToWorld(
+      to.column,
+      to.row,
+    );
+
+  return Math.atan2(
+    end.y - start.y,
+    end.x - start.x,
+  );
+}
+
 function worldToHex(
   worldX,
   worldY,
 ) {
   let nearest = null;
-  let nearestDistance = Infinity;
+
+  let nearestDistance =
+    Infinity;
 
   for (
     let row = -MAP_ROWS;
@@ -582,21 +1083,24 @@ function worldToHex(
       column <= MAP_COLUMNS;
       column += 1
     ) {
-      const point = hexToWorld(
-        column,
-        row,
-      );
+      const point =
+        hexToWorld(
+          column,
+          row,
+        );
 
-      const distance = Math.hypot(
-        worldX - point.x,
-        worldY - point.y,
-      );
+      const distance =
+        Math.hypot(
+          worldX - point.x,
+          worldY - point.y,
+        );
 
       if (
         distance <
         nearestDistance
       ) {
-        nearestDistance = distance;
+        nearestDistance =
+          distance;
 
         nearest = {
           column,
@@ -606,7 +1110,8 @@ function worldToHex(
     }
   }
 
-  return nearestDistance <= HEX_RADIUS
+  return nearestDistance <=
+    HEX_RADIUS
     ? nearest
     : null;
 }
@@ -617,11 +1122,17 @@ function screenToWorld(
 ) {
   return {
     x:
-      (screenX - state.camera.x) /
+      (
+        screenX -
+        state.camera.x
+      ) /
       state.camera.zoom,
 
     y:
-      (screenY - state.camera.y) /
+      (
+        screenY -
+        state.camera.y
+      ) /
       state.camera.zoom,
   };
 }
@@ -635,8 +1146,13 @@ function selectUnit(unit) {
     return;
   }
 
-  state.selectedUnitId = unit.id;
-  state.selectedCommand = null;
+  state.selectedUnitId =
+    unit.id;
+
+  state.selectedCommand =
+    null;
+
+  resetFireProcedure();
 
   updateSelectedUnitSummary();
 
@@ -649,6 +1165,13 @@ function selectUnit(unit) {
     `${unit.name} 선택 — ${unit.model}${detectionText}`,
   );
 
+  if (
+    state.activeCategory ===
+    "combat"
+  ) {
+    renderFireProcedure();
+  }
+
   renderMap();
 }
 
@@ -658,7 +1181,10 @@ function getMovementCost(
 ) {
   const terrain =
     state.terrain.get(
-      terrainKey(column, row),
+      terrainKey(
+        column,
+        row,
+      ),
     );
 
   if (!terrain) {
@@ -694,12 +1220,17 @@ function getHexNeighbors(
         ];
 
   return directions.map(
-    ([columnOffset, rowOffset]) => ({
+    ([
+      columnOffset,
+      rowOffset,
+    ]) => ({
       column:
-        column + columnOffset,
+        column +
+        columnOffset,
 
       row:
-        row + rowOffset,
+        row +
+        rowOffset,
     }),
   );
 }
@@ -719,7 +1250,9 @@ function selectHex(hex) {
 
   state.selectedHex = hex;
 
-  const unit = getSelectedUnit();
+  const unit =
+    getSelectedUnit();
+
   const command =
     state.selectedCommand;
 
@@ -727,12 +1260,13 @@ function selectHex(hex) {
     !unit ||
     unit.side !== "friendly"
   ) {
+    renderMap();
     return;
   }
 
   if (
     command?.needsTarget &&
-    movementCommandIds.has(
+    MOVEMENT_COMMAND_IDS.has(
       command.id,
     )
   ) {
@@ -741,8 +1275,11 @@ function selectHex(hex) {
         unit,
 
         destination: {
-          column: hex.column,
-          row: hex.row,
+          column:
+            hex.column,
+
+          row:
+            hex.row,
         },
 
         getNeighbors:
@@ -760,21 +1297,163 @@ function selectHex(hex) {
       unit.command =
         command.label;
 
-      updateSelectedUnitSummary();
+      setPersistentAction(
+        unit,
+        {
+          type:
+            UNIT_ACTIONS.MOVE,
+
+          targetHex: hex,
+
+          label:
+            command.label,
+        },
+        state.turn,
+      );
 
       setMapMessage(
         `${command.label}: ${unit.plannedPath.length}개 헥스 이동로 설정`,
       );
     }
 
+    updateSelectedUnitSummary();
+    renderMap();
+    return;
+  }
+
+  if (
+    command?.id ===
+    "observation"
+  ) {
+    const direction =
+      calculateDirection(
+        unit,
+        hex,
+      );
+
+    setPersistentAction(
+      unit,
+      {
+        type:
+          UNIT_ACTIONS.OBSERVE,
+
+        targetHex: hex,
+        direction,
+        label: "감시",
+      },
+      state.turn,
+    );
+
+    state.selectedCommand =
+      null;
+
+    updateSelectedUnitSummary();
+
+    setMapMessage(
+      `감시 방향 지정: ${hex.column}, ${hex.row}`,
+    );
+
+    renderMap();
+    return;
+  }
+
+  if (
+    command?.id ===
+    "recon-by-fire"
+  ) {
+    applyReconByFire(
+      state.runtimeScenario,
+      unit,
+      hex,
+      state.turn,
+    );
+
+    state.selectedCommand =
+      null;
+
+    updateSelectedUnitSummary();
+
+    setMapMessage(
+      `화력수색 시작: ${hex.column}, ${hex.row}`,
+    );
+
+    updateDetection(
+      state.runtimeScenario,
+      state.turn,
+    );
+
+    renderMap();
+    return;
+  }
+
+  if (
+    command?.id ===
+    "fire-target"
+  ) {
+    const targetUnit =
+      state.units.find(
+        (candidate) =>
+          candidate.column ===
+            hex.column &&
+          candidate.row ===
+            hex.row &&
+          candidate.side ===
+            "enemy" &&
+          isUnitVisible(
+            candidate,
+            state.developerMode,
+          ),
+      );
+
+    setFireTarget(
+      unit,
+      {
+        column:
+          hex.column,
+
+        row:
+          hex.row,
+
+        unitId:
+          targetUnit?.id ??
+          null,
+      },
+      state.fireProcedure
+        .ammunition,
+    );
+
+    state.fireProcedure.targetHex = {
+      column:
+        hex.column,
+
+      row:
+        hex.row,
+    };
+
+    state.fireProcedure.targetUnitId =
+      targetUnit?.id ??
+      null;
+
+    state.selectedCommand =
+      null;
+
+    updateSelectedUnitSummary();
+
+    setMapMessage(
+      `사격 목표 지정: ${hex.column}, ${hex.row}`,
+    );
+
+    renderFireProcedure();
     renderMap();
     return;
   }
 
   if (command?.needsTarget) {
     unit.command =
-      `${command.label} ` +
-      `(${hex.column}, ${hex.row})`;
+      `${command.label} (${hex.column}, ${hex.row})`;
+
+    state.selectedCommand =
+      null;
 
     updateSelectedUnitSummary();
 
@@ -787,13 +1466,16 @@ function selectHex(hex) {
   }
 
   const terrainType =
-    TERRAIN_TYPES[terrain.type];
+    TERRAIN_TYPES[
+      terrain.type
+    ];
 
   const movementCost =
     Number.isFinite(
       terrainType.movementCost,
     )
-      ? terrainType.movementCost
+      ? terrainType
+          .movementCost
       : "이동 불가";
 
   setMapMessage(
@@ -812,47 +1494,56 @@ function handleMapTap(
   clientY,
 ) {
   const rect =
-    elements.canvas.getBoundingClientRect();
+    elements.canvas
+      .getBoundingClientRect();
 
-  const world = screenToWorld(
-    clientX - rect.left,
-    clientY - rect.top,
-  );
+  const world =
+    screenToWorld(
+      clientX - rect.left,
+      clientY - rect.top,
+    );
 
-  const unit = state.units.find(
-    (candidate) => {
-      if (
-        !isUnitVisible(
-          candidate,
-          state.developerMode,
-        )
-      ) {
-        return false;
-      }
+  const unit =
+    state.units.find(
+      (candidate) => {
+        if (
+          !isUnitVisible(
+            candidate,
+            state.developerMode,
+          )
+        ) {
+          return false;
+        }
 
-      const point = hexToWorld(
-        candidate.column,
-        candidate.row,
-      );
+        const point =
+          hexToWorld(
+            candidate.column,
+            candidate.row,
+          );
 
-      return (
-        Math.hypot(
-          world.x - point.x,
-          world.y - point.y,
-        ) <= 30
-      );
-    },
-  );
+        return (
+          Math.hypot(
+            world.x - point.x,
+            world.y - point.y,
+          ) <= 30
+        );
+      },
+    );
 
-  if (unit) {
+  if (
+    unit &&
+    state.selectedCommand?.id !==
+      "fire-target"
+  ) {
     selectUnit(unit);
     return;
   }
 
-  const hex = worldToHex(
-    world.x,
-    world.y,
-  );
+  const hex =
+    worldToHex(
+      world.x,
+      world.y,
+    );
 
   if (hex) {
     selectHex(hex);
@@ -863,14 +1554,15 @@ function executeTurn() {
   const selectedUnit =
     getSelectedUnit();
 
-  const command =
+  const executedCommand =
     selectedUnit?.command ??
     "대기";
 
   state.units
     .filter(
       (unit) =>
-        unit.side === "friendly",
+        unit.side ===
+        "friendly",
     )
     .forEach((unit) => {
       advanceUnitMovement({
@@ -880,16 +1572,25 @@ function executeTurn() {
       });
     });
 
+  processPersistentActions(
+    state.runtimeScenario,
+    state.turn,
+  );
+
   state.turn += 1;
+  state.runtimeScenario.turn =
+    state.turn;
 
   updateDetection(
-    runtimeScenario,
+    state.runtimeScenario,
+    state.turn,
   );
 
   elements.turnLabel.textContent =
     `TURN ${state.turn}`;
 
-  state.selectedCommand = null;
+  state.selectedCommand =
+    null;
 
   document
     .querySelectorAll(
@@ -911,22 +1612,30 @@ function executeTurn() {
     ).length;
 
   setMapMessage(
-    `TURN ${state.turn - 1}: ` +
-      `${command} 처리 | ` +
-      `적 접촉 ${contacts}`,
+    `TURN ${state.turn - 1}: ${executedCommand} 처리 | 적 접촉 ${contacts}`,
   );
+
+  if (
+    state.activeCategory ===
+    "combat"
+  ) {
+    renderFireProcedure();
+  }
 
   renderMap();
 }
 
 function resizeCanvas() {
   const rect =
-    elements.canvas.getBoundingClientRect();
+    elements.canvas
+      .getBoundingClientRect();
 
-  const ratio = Math.min(
-    window.devicePixelRatio || 1,
-    2,
-  );
+  const ratio =
+    Math.min(
+      window.devicePixelRatio ||
+        1,
+      2,
+    );
 
   elements.canvas.width =
     Math.max(
@@ -956,20 +1665,24 @@ function resizeCanvas() {
 
 function centerCamera() {
   const rect =
-    elements.canvas.getBoundingClientRect();
+    elements.canvas
+      .getBoundingClientRect();
 
   const unit =
     getSelectedUnit() ??
-    playerUnit;
+    getPlayerUnit(
+      state.runtimeScenario,
+    );
 
   if (!unit) {
     return;
   }
 
-  const point = hexToWorld(
-    unit.column,
-    unit.row,
-  );
+  const point =
+    hexToWorld(
+      unit.column,
+      unit.row,
+    );
 
   state.camera.x =
     rect.width / 2 -
@@ -1020,7 +1733,10 @@ function drawHexagon(
     side += 1
   ) {
     const angle =
-      (Math.PI / 3) * side -
+      (
+        Math.PI / 3
+      ) *
+        side -
       Math.PI / 6;
 
     const pointX =
@@ -1048,11 +1764,17 @@ function drawHexagon(
 
   context.closePath();
 
-  context.fillStyle = fill;
+  context.fillStyle =
+    fill;
+
   context.fill();
 
-  context.strokeStyle = stroke;
-  context.lineWidth = lineWidth;
+  context.strokeStyle =
+    stroke;
+
+  context.lineWidth =
+    lineWidth;
+
   context.stroke();
 }
 
@@ -1068,7 +1790,8 @@ function drawTerrainSymbol(
   context.font =
     "600 12px system-ui";
 
-  context.textAlign = "center";
+  context.textAlign =
+    "center";
 
   if (terrainType.symbol) {
     context.fillText(
@@ -1128,7 +1851,8 @@ function drawTankIcon(
   );
 
   context.rotate(
-    unit.hullDirection ?? 0,
+    unit.hullDirection ??
+      0,
   );
 
   context.fillStyle =
@@ -1155,6 +1879,29 @@ function drawTankIcon(
     16,
   );
 
+  context.beginPath();
+
+  context.moveTo(
+    -12,
+    -11,
+  );
+
+  context.lineTo(
+    12,
+    -11,
+  );
+
+  context.moveTo(
+    -12,
+    11,
+  );
+
+  context.lineTo(
+    12,
+    11,
+  );
+
+  context.stroke();
   context.restore();
 
   context.save();
@@ -1170,6 +1917,14 @@ function drawTankIcon(
       0,
   );
 
+  context.fillStyle =
+    unit.side === "friendly"
+      ? "#9ec2aa"
+      : "#c98178";
+
+  context.strokeStyle =
+    "#edf4ef";
+
   context.beginPath();
 
   context.arc(
@@ -1179,9 +1934,6 @@ function drawTankIcon(
     0,
     Math.PI * 2,
   );
-
-  context.fillStyle =
-    "#9ec2aa";
 
   context.fill();
   context.stroke();
@@ -1195,12 +1947,16 @@ function drawTankIcon(
   context.restore();
 }
 
-function drawObserverIcon(point) {
+function drawInfantryObserverIcon(
+  point,
+) {
+  context.save();
+
   context.strokeStyle =
-    "#f0b58f";
+    "#ffd0c1";
 
   context.fillStyle =
-    "rgba(145, 70, 45, 0.9)";
+    "#9c5b4c";
 
   context.lineWidth = 2;
 
@@ -1208,8 +1964,8 @@ function drawObserverIcon(point) {
 
   context.arc(
     point.x,
-    point.y,
-    10,
+    point.y - 9,
+    5,
     0,
     Math.PI * 2,
   );
@@ -1220,26 +1976,60 @@ function drawObserverIcon(point) {
   context.beginPath();
 
   context.moveTo(
-    point.x - 14,
-    point.y,
+    point.x,
+    point.y - 4,
   );
 
   context.lineTo(
-    point.x + 14,
-    point.y,
+    point.x,
+    point.y + 10,
+  );
+
+  context.moveTo(
+    point.x - 8,
+    point.y + 1,
+  );
+
+  context.lineTo(
+    point.x + 8,
+    point.y + 1,
   );
 
   context.moveTo(
     point.x,
-    point.y - 14,
+    point.y + 10,
   );
 
   context.lineTo(
+    point.x - 7,
+    point.y + 18,
+  );
+
+  context.moveTo(
     point.x,
-    point.y + 14,
+    point.y + 10,
+  );
+
+  context.lineTo(
+    point.x + 7,
+    point.y + 18,
   );
 
   context.stroke();
+
+  context.beginPath();
+
+  context.arc(
+    point.x + 10,
+    point.y - 2,
+    4,
+    0,
+    Math.PI * 2,
+  );
+
+  context.stroke();
+
+  context.restore();
 }
 
 function drawAtgmIcon(point) {
@@ -1269,6 +2059,7 @@ function drawAtgmIcon(point) {
   );
 
   context.closePath();
+
   context.fill();
   context.stroke();
 
@@ -1304,6 +2095,71 @@ function drawContactIcon(point) {
   );
 }
 
+function drawActionDirection(unit) {
+  const direction =
+    unit.action?.direction;
+
+  if (
+    !Number.isFinite(
+      direction,
+    )
+  ) {
+    return;
+  }
+
+  if (
+    unit.action.type !==
+      UNIT_ACTIONS.OBSERVE &&
+    unit.action.type !==
+      UNIT_ACTIONS.RECON_BY_FIRE &&
+    unit.action.type !==
+      UNIT_ACTIONS.FIRE
+  ) {
+    return;
+  }
+
+  const point =
+    hexToWorld(
+      unit.column,
+      unit.row,
+    );
+
+  context.save();
+
+  context.strokeStyle =
+    unit.action.type ===
+    UNIT_ACTIONS.OBSERVE
+      ? "#8ed6b0"
+      : "#e6a06e";
+
+  context.lineWidth = 2;
+
+  context.setLineDash([
+    5,
+    4,
+  ]);
+
+  context.beginPath();
+
+  context.moveTo(
+    point.x,
+    point.y,
+  );
+
+  context.lineTo(
+    point.x +
+      Math.cos(direction) *
+        65,
+
+    point.y +
+      Math.sin(direction) *
+        65,
+  );
+
+  context.stroke();
+  context.restore();
+}
+
 function drawUnit(unit) {
   if (
     !isUnitVisible(
@@ -1314,10 +2170,11 @@ function drawUnit(unit) {
     return;
   }
 
-  const point = hexToWorld(
-    unit.column,
-    unit.row,
-  );
+  const point =
+    hexToWorld(
+      unit.column,
+      unit.row,
+    );
 
   if (
     unit.id ===
@@ -1337,7 +2194,9 @@ function drawUnit(unit) {
     unit.type ===
     "artillery-observer"
   ) {
-    drawObserverIcon(point);
+    drawInfantryObserverIcon(
+      point,
+    );
   } else if (
     unit.type ===
     "atgm-team"
@@ -1349,6 +2208,8 @@ function drawUnit(unit) {
       point,
     );
   }
+
+  drawActionDirection(unit);
 
   context.fillStyle =
     unit.side === "friendly"
@@ -1371,7 +2232,7 @@ function drawUnit(unit) {
   context.fillText(
     label,
     point.x,
-    point.y + 29,
+    point.y + 31,
   );
 }
 
@@ -1379,16 +2240,23 @@ function drawDestination(unit) {
   if (
     unit.side !== "friendly" ||
     !unit.destination ||
-    !unit.plannedPath?.length
+    !Array.isArray(
+      unit.plannedPath,
+    ) ||
+    unit.plannedPath.length === 0
   ) {
     return;
   }
 
   const route = [
     {
-      column: unit.column,
-      row: unit.row,
+      column:
+        unit.column,
+
+      row:
+        unit.row,
     },
+
     ...unit.plannedPath,
   ];
 
@@ -1408,10 +2276,11 @@ function drawDestination(unit) {
 
   route.forEach(
     (hex, index) => {
-      const point = hexToWorld(
-        hex.column,
-        hex.row,
-      );
+      const point =
+        hexToWorld(
+          hex.column,
+          hex.row,
+        );
 
       if (index === 0) {
         context.moveTo(
@@ -1431,9 +2300,70 @@ function drawDestination(unit) {
   context.restore();
 }
 
+function drawFireTarget(unit) {
+  const target =
+    unit.fireControl
+      ?.targetHex;
+
+  if (!target) {
+    return;
+  }
+
+  const point =
+    hexToWorld(
+      target.column,
+      target.row,
+    );
+
+  context.save();
+
+  context.strokeStyle =
+    "#ff9a7f";
+
+  context.lineWidth = 2;
+
+  context.beginPath();
+
+  context.arc(
+    point.x,
+    point.y,
+    14,
+    0,
+    Math.PI * 2,
+  );
+
+  context.stroke();
+
+  context.beginPath();
+
+  context.moveTo(
+    point.x - 19,
+    point.y,
+  );
+
+  context.lineTo(
+    point.x + 19,
+    point.y,
+  );
+
+  context.moveTo(
+    point.x,
+    point.y - 19,
+  );
+
+  context.lineTo(
+    point.x,
+    point.y + 19,
+  );
+
+  context.stroke();
+  context.restore();
+}
+
 function renderMap() {
   const rect =
-    elements.canvas.getBoundingClientRect();
+    elements.canvas
+      .getBoundingClientRect();
 
   context.clearRect(
     0,
@@ -1456,10 +2386,11 @@ function renderMap() {
 
   state.terrain.forEach(
     (terrain) => {
-      const point = hexToWorld(
-        terrain.column,
-        terrain.row,
-      );
+      const point =
+        hexToWorld(
+          terrain.column,
+          terrain.row,
+        );
 
       const terrainType =
         TERRAIN_TYPES[
@@ -1467,9 +2398,11 @@ function renderMap() {
         ];
 
       const selected =
-        state.selectedHex?.column ===
+        state.selectedHex
+          ?.column ===
           terrain.column &&
-        state.selectedHex?.row ===
+        state.selectedHex
+          ?.row ===
           terrain.row;
 
       drawHexagon(
@@ -1496,6 +2429,14 @@ function renderMap() {
     drawDestination,
   );
 
+  state.units
+    .filter(
+      (unit) =>
+        unit.side ===
+        "friendly",
+    )
+    .forEach(drawFireTarget);
+
   state.units.forEach(
     drawUnit,
   );
@@ -1518,28 +2459,29 @@ function drawDeveloperHud(
   const enemies =
     state.units.filter(
       (unit) =>
-        unit.side === "enemy",
+        unit.side ===
+        "enemy",
     );
 
   const lines = [
     "DEV MODE",
     `TURN: ${state.turn}`,
     `SELECTED: ${selected?.id ?? "NONE"}`,
+    `ACTION: ${selected?.action?.type ?? "NONE"}`,
     `UNITS: ${state.units.length}`,
     `ENEMIES: ${enemies.length}`,
 
     ...enemies.map(
       (unit) =>
-        `${unit.id}: ` +
-        `${unit.column},${unit.row} ` +
-        `S${unit.detectionStage}`,
+        `${unit.id}: ${unit.column},${unit.row} S${unit.detectionStage}`,
     ),
   ];
 
-  const width = 190;
+  const width = 205;
 
   const height =
-    lines.length * 16 + 12;
+    lines.length * 16 +
+    12;
 
   const x =
     canvasWidth -
@@ -1597,17 +2539,22 @@ function beginPointerDrag(event) {
       dragging: true,
       pointerId:
         event.pointerId,
-      lastX: event.clientX,
-      lastY: event.clientY,
-      downX: event.clientX,
-      downY: event.clientY,
+      lastX:
+        event.clientX,
+      lastY:
+        event.clientY,
+      downX:
+        event.clientX,
+      downY:
+        event.clientY,
       moved: false,
     },
   );
 
-  elements.canvas.setPointerCapture(
-    event.pointerId,
-  );
+  elements.canvas
+    .setPointerCapture(
+      event.pointerId,
+    );
 }
 
 function continuePointerDrag(event) {
@@ -1628,8 +2575,11 @@ function continuePointerDrag(event) {
         state.camera.downY,
     );
 
-  if (totalMovement > 7) {
-    state.camera.moved = true;
+  if (
+    totalMovement > 7
+  ) {
+    state.camera.moved =
+      true;
   }
 
   state.camera.x +=
@@ -1660,17 +2610,22 @@ function endPointerDrag(event) {
   const wasTap =
     !state.camera.moved;
 
-  state.camera.dragging = false;
-  state.camera.pointerId = null;
+  state.camera.dragging =
+    false;
+
+  state.camera.pointerId =
+    null;
 
   if (
-    elements.canvas.hasPointerCapture(
-      event.pointerId,
-    )
+    elements.canvas
+      .hasPointerCapture(
+        event.pointerId,
+      )
   ) {
-    elements.canvas.releasePointerCapture(
-      event.pointerId,
-    );
+    elements.canvas
+      .releasePointerCapture(
+        event.pointerId,
+      );
   }
 
   if (wasTap) {
@@ -1682,38 +2637,50 @@ function endPointerDrag(event) {
 }
 
 function handleAction(action) {
-  if (action === "open-battle") {
-    showScreen("battle");
-  } else if (
-    action === "return-menu"
-  ) {
-    showScreen("menu");
-  } else if (
-    action === "open-settings"
-  ) {
-    elements.settingsDialog.showModal();
-  } else if (
-    action ===
-    "open-project-info"
-  ) {
-    elements.projectInfoDialog.showModal();
-  } else if (
-    action === "center-camera"
-  ) {
-    centerCamera();
-    renderMap();
-  } else if (
-    action === "zoom-in"
-  ) {
-    changeZoom(0.15);
-  } else if (
-    action === "zoom-out"
-  ) {
-    changeZoom(-0.15);
-  } else if (
-    action === "execute-turn"
-  ) {
-    executeTurn();
+  switch (action) {
+    case "open-battle":
+      showScreen("battle");
+      break;
+
+    case "return-menu":
+      showScreen("menu");
+      break;
+
+    case "restart-scenario":
+      restartCurrentScenario();
+      break;
+
+    case "open-settings":
+      elements.settingsDialog
+        .showModal();
+      break;
+
+    case "open-project-info":
+      elements.projectInfoDialog
+        .showModal();
+      break;
+
+    case "center-camera":
+      centerCamera();
+      renderMap();
+      break;
+
+    case "zoom-in":
+      changeZoom(0.15);
+      break;
+
+    case "zoom-out":
+      changeZoom(-0.15);
+      break;
+
+    case "execute-turn":
+      executeTurn();
+      break;
+
+    default:
+      console.warn(
+        `알 수 없는 action: ${action}`,
+      );
   }
 }
 
@@ -1728,7 +2695,8 @@ function bindEvents() {
 
       if (actionButton) {
         handleAction(
-          actionButton.dataset.action,
+          actionButton.dataset
+            .action,
         );
 
         return;
@@ -1748,23 +2716,25 @@ function bindEvents() {
     },
   );
 
-  elements.difficultySelect.addEventListener(
-    "change",
-    (event) => {
-      state.difficulty =
-        event.target.value;
-    },
-  );
+  elements.difficultySelect
+    .addEventListener(
+      "change",
+      (event) => {
+        state.difficulty =
+          event.target.value;
+      },
+    );
 
-  elements.developerModeToggle.addEventListener(
-    "change",
-    (event) => {
-      state.developerMode =
-        event.target.checked;
+  elements.developerModeToggle
+    .addEventListener(
+      "change",
+      (event) => {
+        state.developerMode =
+          event.target.checked;
 
-      renderMap();
-    },
-  );
+        renderMap();
+      },
+    );
 
   elements.canvas.addEventListener(
     "pointerdown",
@@ -1802,16 +2772,10 @@ function bindEvents() {
 }
 
 function initialize() {
-  createTerrain();
-
-  updateDetection(
-    runtimeScenario,
-  );
+  initializeScenario();
 
   setInterfaceText();
   bindEvents();
-
-  updateSelectedUnitSummary();
 
   showScreen("menu");
 }
