@@ -1,15 +1,14 @@
-// src/ui/firePanel.js — 전체 교체, 1~432행
+// src/ui/firePanel.js — 전체 교체
 
 import {
   AMMUNITION_TYPES,
   FIRE_PROCEDURE_STATES,
   FIRE_STATES,
-  beginLoading,
-  beginReloading,
   ceaseFire,
   enableAdjustedFire,
   fireSingleShot,
   issueFireCommand,
+  selectAmmunition,
   setFireTarget,
 } from "../engine/fireControl.js";
 
@@ -18,69 +17,46 @@ import {
 } from "../engine/turretControl.js";
 
 const AMMUNITION_LABELS = Object.freeze({
-  [AMMUNITION_TYPES.APFSDS]:
-    "날탄",
-
-  [AMMUNITION_TYPES.HEAT]:
-    "대탄",
-
-  [AMMUNITION_TYPES.CANISTER]:
-    "벌집탄",
-
-  [AMMUNITION_TYPES.SMOKE]:
-    "연막탄",
+  [AMMUNITION_TYPES.APFSDS]: "날탄",
+  [AMMUNITION_TYPES.HEAT]: "대탄",
+  [AMMUNITION_TYPES.CANISTER]: "벌집탄",
+  [AMMUNITION_TYPES.SMOKE]: "연막탄",
 });
 
 const PROCEDURE_LABELS = Object.freeze({
-  [FIRE_PROCEDURE_STATES.STOPPED]:
-    "사격 중지",
-
-  [FIRE_PROCEDURE_STATES.TARGET_DESIGNATED]:
-    "표적 지정",
-
-  [FIRE_PROCEDURE_STATES.FIRE_COMMAND]:
-    "사격명령",
-
-  [FIRE_PROCEDURE_STATES.LOADING]:
-    "장전 중",
-
-  [FIRE_PROCEDURE_STATES.TRAVERSING]:
-    "포탑 선회",
-
-  [FIRE_PROCEDURE_STATES.AIMING]:
-    "조준 중",
-
-  [FIRE_PROCEDURE_STATES.READY_TO_FIRE]:
-    "발사 준비",
-
-  [FIRE_PROCEDURE_STATES.FIRED]:
-    "발사 완료",
-
-  [FIRE_PROCEDURE_STATES.RELOADING]:
-    "재장전 중",
-
-  [FIRE_PROCEDURE_STATES.ADJUSTING]:
-    "쏴-수정",
+  [FIRE_PROCEDURE_STATES.STOPPED]: "사격 중지",
+  [FIRE_PROCEDURE_STATES.TARGET_DESIGNATED]: "표적 지정",
+  [FIRE_PROCEDURE_STATES.FIRE_COMMAND]: "사격명령",
+  [FIRE_PROCEDURE_STATES.LOADING]: "장전 중",
+  [FIRE_PROCEDURE_STATES.TRAVERSING]: "포탑 선회",
+  [FIRE_PROCEDURE_STATES.AIMING]: "조준 중",
+  [FIRE_PROCEDURE_STATES.READY_TO_FIRE]: "발사 준비",
+  [FIRE_PROCEDURE_STATES.FIRED]: "발사 완료",
+  [FIRE_PROCEDURE_STATES.RELOADING]: "재장전 중",
+  [FIRE_PROCEDURE_STATES.ADJUSTING]: "쏴-수정",
 });
 
-function createButton(
-  label,
-  options = {},
-) {
-  const button =
-    document.createElement(
-      "button",
-    );
+const TURRET_MODE_LABELS = Object.freeze({
+  normal: "정상구동",
+  emergency: "비상구동",
+  manual: "수동구동",
+});
+
+function getAmmunitionLabel(ammunition) {
+  if (!ammunition) {
+    return "없음";
+  }
+
+  return AMMUNITION_LABELS[ammunition] ?? ammunition;
+}
+
+function createButton(label, options = {}) {
+  const button = document.createElement("button");
 
   button.type = "button";
-  button.className =
-    "command-option";
-
-  button.textContent =
-    label;
-
-  button.disabled =
-    options.disabled === true;
+  button.className = "command-option";
+  button.textContent = label;
+  button.disabled = options.disabled === true;
 
   button.classList.toggle(
     "is-selected",
@@ -102,103 +78,82 @@ function createButton(
   return button;
 }
 
-function createStatusRow(
-  label,
-  value,
-) {
-  const row =
-    document.createElement(
-      "span",
-    );
-
-  const strong =
-    document.createElement(
-      "strong",
-    );
+function createStatusRow(label, value) {
+  const row = document.createElement("span");
+  const strong = document.createElement("strong");
 
   row.append(`${label}: `);
 
-  strong.textContent =
-    value;
+  strong.textContent = value;
 
   row.append(strong);
 
   return row;
 }
 
-function createStatusPanel(
-  unit,
-) {
-  const panel =
-    document.createElement(
-      "div",
-    );
+function createStatusPanel(unit) {
+  const panel = document.createElement("div");
+  const turretStatus = getTurretStatus(unit);
+  const fireControl = unit.fireControl;
 
-  panel.className =
-    "turret-status-panel";
+  panel.className = "turret-status-panel";
 
-  const turretStatus =
-    getTurretStatus(unit);
+  const stabilizer = turretStatus?.stabilizerAvailable
+    ? "사용"
+    : turretStatus?.stabilizerOperational
+      ? "미사용"
+      : "고장";
 
-  const fireControl =
-    unit.fireControl;
-
-  const modeLabels = {
-    normal: "정상구동",
-    emergency: "비상구동",
-    manual: "수동구동",
-  };
-
-  const stabilizer =
-    turretStatus
-      ?.stabilizerAvailable
-      ? "사용"
-      : turretStatus
-          ?.stabilizerOperational
-        ? "미사용"
-        : "고장";
-
-  const alignment =
-    turretStatus?.aligned
-      ? "정렬 완료"
-      : "선회 중";
+  const alignment = turretStatus?.aligned
+    ? "정렬 완료"
+    : "선회 중";
 
   const procedure =
-    PROCEDURE_LABELS[
-      fireControl.procedureState
-    ] ??
+    PROCEDURE_LABELS[fireControl.procedureState] ??
     fireControl.procedureState;
 
-  const loading =
-    fireControl.loaded
-      ? "장전 완료"
-      : fireControl.loading
-        ? "장전 중"
-        : "미장전";
+  const chamberStatus = fireControl.loaded
+    ? getAmmunitionLabel(
+        fireControl.loadedAmmunition,
+      )
+    : "미장전";
+
+  const loadingStatus = fireControl.loading
+    ? getAmmunitionLabel(
+        fireControl.loadingAmmunition,
+      )
+    : "없음";
+
+  const selectedAmmunition = getAmmunitionLabel(
+    fireControl.ammunition,
+  );
 
   panel.append(
     createStatusRow(
       "절차",
       procedure,
     ),
-
     createStatusRow(
-      "탄 상태",
-      loading,
+      "현재 장전탄",
+      chamberStatus,
     ),
-
+    createStatusRow(
+      "장전 중",
+      loadingStatus,
+    ),
+    createStatusRow(
+      "다음 장전탄",
+      selectedAmmunition,
+    ),
     createStatusRow(
       "포탑",
       alignment,
     ),
-
     createStatusRow(
       "구동",
-      modeLabels[
-        turretStatus?.mode
-      ] ?? "-",
+      TURRET_MODE_LABELS[turretStatus?.mode] ??
+        "-",
     ),
-
     createStatusRow(
       "안정화",
       stabilizer,
@@ -206,16 +161,10 @@ function createStatusPanel(
   );
 
   if (turretStatus?.warning) {
-    const warning =
-      document.createElement(
-        "p",
-      );
+    const warning = document.createElement("p");
 
-    warning.className =
-      "turret-warning";
-
-    warning.textContent =
-      turretStatus.warning;
+    warning.className = "turret-warning";
+    warning.textContent = turretStatus.warning;
 
     panel.append(warning);
   }
@@ -223,106 +172,115 @@ function createStatusPanel(
   return panel;
 }
 
-function createProcedureProgress(
-  currentState,
-) {
-  const progress =
-    document.createElement(
-      "div",
-    );
+function createProcedureProgress(currentState) {
+  const progress = document.createElement("div");
 
   progress.className =
     "fire-procedure-progress";
 
   const stages = [
-    FIRE_PROCEDURE_STATES
-      .TARGET_DESIGNATED,
-
-    FIRE_PROCEDURE_STATES
-      .FIRE_COMMAND,
-
+    FIRE_PROCEDURE_STATES.TARGET_DESIGNATED,
+    FIRE_PROCEDURE_STATES.FIRE_COMMAND,
     FIRE_PROCEDURE_STATES.LOADING,
-
     FIRE_PROCEDURE_STATES.TRAVERSING,
-
     FIRE_PROCEDURE_STATES.AIMING,
-
-    FIRE_PROCEDURE_STATES
-      .READY_TO_FIRE,
-
+    FIRE_PROCEDURE_STATES.READY_TO_FIRE,
     FIRE_PROCEDURE_STATES.FIRED,
-
     FIRE_PROCEDURE_STATES.RELOADING,
   ];
 
   const currentIndex =
-    stages.indexOf(
-      currentState,
+    stages.indexOf(currentState);
+
+  stages.forEach((stage, index) => {
+    const item = document.createElement("span");
+
+    item.className =
+      "fire-procedure-step";
+
+    item.textContent =
+      PROCEDURE_LABELS[stage];
+
+    item.classList.toggle(
+      "is-current",
+      stage === currentState,
     );
 
-  stages.forEach(
-    (stage, index) => {
-      const item =
-        document.createElement(
-          "span",
-        );
+    item.classList.toggle(
+      "is-complete",
+      currentIndex >= 0 &&
+        index < currentIndex,
+    );
 
-      item.className =
-        "fire-procedure-step";
-
-      item.textContent =
-        PROCEDURE_LABELS[stage];
-
-      item.classList.toggle(
-        "is-current",
-        stage === currentState,
-      );
-
-      item.classList.toggle(
-        "is-complete",
-        currentIndex >= 0 &&
-          index < currentIndex,
-      );
-
-      progress.append(item);
-    },
-  );
+    progress.append(item);
+  });
 
   return progress;
 }
 
-function formatShotResult(
-  result,
-) {
+function formatShotResult(result) {
   if (!result) {
     return "발사 완료";
   }
 
+  const ammunition = result.ammunition
+    ? `${getAmmunitionLabel(result.ammunition)} / `
+    : "";
+
   if (result.smokeCreated) {
-    return "연막탄 발사 / 연막 형성";
+    return `${ammunition}연막 형성`;
   }
 
   if (!result.hit) {
-    return `발사 / ${result.reason}`;
+    return (
+      `${ammunition}발사 / ` +
+      `${result.reason ?? "빗나감"}`
+    );
   }
 
   if (result.destroyed) {
     return (
-      `명중 / 피해 ${result.damage} / ` +
-      "격파"
+      `${ammunition}명중 / ` +
+      `피해 ${result.damage} / 격파`
     );
   }
 
+  const remainingHealth =
+    result.remainingHealth !== null &&
+    result.remainingHealth !== undefined
+      ? ` / 잔여 체력 ${result.remainingHealth}`
+      : "";
+
   return (
-    `명중 / 피해 ${result.damage}` +
-    (
-      result.remainingHealth !== null &&
-      result.remainingHealth !==
-        undefined
-        ? ` / 잔여 체력 ${result.remainingHealth}`
-        : ""
-    )
+    `${ammunition}명중 / ` +
+    `피해 ${result.damage}` +
+    remainingHealth
   );
+}
+
+function getLoadingMessage(result) {
+  if (result.usedLoadedRound) {
+    return "사격명령 하달. 포탑 선회와 조준을 시작합니다.";
+  }
+
+  if (
+    result.loadingInProgress &&
+    !result.automaticLoading
+  ) {
+    return (
+      `사격명령 하달. ` +
+      `${getAmmunitionLabel(result.ammunition)} 장전을 계속합니다.`
+    );
+  }
+
+  if (result.automaticLoading) {
+    return (
+      `사격명령 하달. ` +
+      `${getAmmunitionLabel(result.ammunition)} 자동 장전을 시작합니다.`
+    );
+  }
+
+  return "사격명령을 하달했습니다.";
 }
 
 export function createFirePanel({
@@ -340,51 +298,45 @@ export function createFirePanel({
   const procedure = {
     ammunition:
       AMMUNITION_TYPES.APFSDS,
-
     targetHex: null,
     targetUnitId: null,
   };
 
-  function synchronizeProcedure(
-    unit,
-  ) {
+  function synchronizeProcedure(unit) {
+    const fireControl = unit.fireControl;
+
     procedure.ammunition =
-      unit.fireControl
-        ?.ammunition ??
+      fireControl?.ammunition ??
       procedure.ammunition;
 
     procedure.targetHex =
-      unit.fireControl
-        ?.targetHex
+      fireControl?.targetHex
         ? {
-            ...unit.fireControl
-              .targetHex,
+            ...fireControl.targetHex,
           }
         : null;
 
     procedure.targetUnitId =
-      unit.fireControl
-        ?.targetUnitId ??
+      fireControl?.targetUnitId ??
       null;
   }
 
   function reset() {
+    const unit = getSelectedUnit();
+
     procedure.ammunition =
+      unit?.fireControl?.ammunition ??
       AMMUNITION_TYPES.APFSDS;
 
-    procedure.targetHex =
-      null;
-
-    procedure.targetUnitId =
-      null;
+    procedure.targetHex = null;
+    procedure.targetUnitId = null;
   }
 
   function setTarget(
     targetHex,
     targetUnitId = null,
   ) {
-    const unit =
-      getSelectedUnit();
+    const unit = getSelectedUnit();
 
     if (
       !unit ||
@@ -394,23 +346,16 @@ export function createFirePanel({
       return false;
     }
 
-    const success =
-      setFireTarget(
-        unit,
-        {
-          column:
-            targetHex.column,
-
-          row:
-            targetHex.row,
-
-          unitId:
-            targetUnitId,
-        },
-
-        procedure.ammunition,
-        getTurn(),
-      );
+    const success = setFireTarget(
+      unit,
+      {
+        column: targetHex.column,
+        row: targetHex.row,
+        unitId: targetUnitId,
+      },
+      null,
+      getTurn(),
+    );
 
     if (!success) {
       return false;
@@ -433,45 +378,58 @@ export function createFirePanel({
     unit,
     result,
   ) {
-    onFireEffect(
-      unit,
-      unit.fireControl
-        .targetHex,
+    const targetHex =
+      unit.fireControl.targetHex;
 
-      unit.fireControl
-        .ammunition,
-    );
+    const firedAmmunition =
+      result.ammunition ??
+      result.shotResult?.ammunition ??
+      null;
+
+    if (
+      targetHex &&
+      firedAmmunition
+    ) {
+      onFireEffect(
+        unit,
+        targetHex,
+        firedAmmunition,
+      );
+    }
 
     onStateChanged();
 
-    onMessage(
-      formatShotResult(
-        result.shotResult,
-      ),
+    const resultMessage = formatShotResult(
+      result.shotResult,
     );
+
+    if (result.reloadStarted) {
+      onMessage(
+        `${resultMessage} / ` +
+        `${getAmmunitionLabel(
+          result.loadingAmmunition,
+        )} 재장전 중`,
+      );
+    } else {
+      onMessage(resultMessage);
+    }
 
     render();
   }
 
-  function renderUnavailable(
-    message,
-  ) {
+  function renderUnavailable(message) {
     container.replaceChildren();
 
     const paragraph =
-      document.createElement(
-        "p",
-      );
+      document.createElement("p");
 
-    paragraph.textContent =
-      message;
+    paragraph.textContent = message;
 
     container.append(paragraph);
   }
 
   function render() {
-    const unit =
-      getSelectedUnit();
+    const unit = getSelectedUnit();
 
     if (
       !unit ||
@@ -501,38 +459,35 @@ export function createFirePanel({
     const procedureState =
       fireControl.procedureState;
 
+    const canIssueFireCommand =
+      Boolean(fireControl.targetHex) &&
+      (
+        procedureState ===
+          FIRE_PROCEDURE_STATES
+            .TARGET_DESIGNATED ||
+        fireControl.loading
+      );
+
     container.replaceChildren();
 
     const wrapper =
-      document.createElement(
-        "div",
-      );
+      document.createElement("div");
 
     wrapper.className =
       "fire-procedure";
 
     wrapper.append(
       createStatusPanel(unit),
-
       createProcedureProgress(
         procedureState,
       ),
     );
 
     const ammunitionGroup =
-      document.createElement(
-        "div",
-      );
+      document.createElement("div");
 
     ammunitionGroup.className =
       "fire-ammunition-group";
-
-    const ammunitionLocked =
-      procedureState !==
-        FIRE_PROCEDURE_STATES.STOPPED &&
-      procedureState !==
-        FIRE_PROCEDURE_STATES
-          .TARGET_DESIGNATED;
 
     Object.entries(
       AMMUNITION_LABELS,
@@ -546,21 +501,48 @@ export function createFirePanel({
             label,
             {
               active:
-                procedure
-                  .ammunition ===
+                fireControl.ammunition ===
                 ammunition,
 
-              disabled:
-                ammunitionLocked,
-
               onClick: () => {
-                procedure.ammunition =
-                  ammunition;
+                const success =
+                  selectAmmunition(
+                    unit,
+                    ammunition,
+                  );
 
-                fireControl.ammunition =
-                  ammunition;
+                if (!success) {
+                  onMessage(
+                    "탄종을 선택할 수 없습니다.",
+                  );
+
+                  return;
+                }
+
+                synchronizeProcedure(unit);
 
                 onStateChanged();
+
+                if (fireControl.loading) {
+                  onMessage(
+                    `다음 장전탄을 ${label}(으)로 변경했습니다. ` +
+                    `현재 장전 중인 ${getAmmunitionLabel(
+                      fireControl.loadingAmmunition,
+                    )}은 유지됩니다.`,
+                  );
+                } else if (fireControl.loaded) {
+                  onMessage(
+                    `다음 장전탄을 ${label}(으)로 변경했습니다. ` +
+                    `현재 장전된 ${getAmmunitionLabel(
+                      fireControl.loadedAmmunition,
+                    )}은 유지됩니다.`,
+                  );
+                } else {
+                  onMessage(
+                    `선택 탄종: ${label}`,
+                  );
+                }
+
                 render();
               },
             },
@@ -569,14 +551,10 @@ export function createFirePanel({
       },
     );
 
-    wrapper.append(
-      ammunitionGroup,
-    );
+    wrapper.append(ammunitionGroup);
 
     const targetStatus =
-      document.createElement(
-        "div",
-      );
+      document.createElement("div");
 
     targetStatus.className =
       "fire-target-status";
@@ -589,9 +567,7 @@ export function createFirePanel({
           )
         : "목표: 미지정";
 
-    wrapper.append(
-      targetStatus,
-    );
+    wrapper.append(targetStatus);
 
     wrapper.append(
       createButton(
@@ -604,8 +580,7 @@ export function createFirePanel({
 
           disabled:
             fireControl.state ===
-              FIRE_STATES.ADJUST ||
-            fireControl.loading,
+            FIRE_STATES.ADJUST,
 
           onClick: () => {
             onBeginTargetSelection();
@@ -628,9 +603,7 @@ export function createFirePanel({
               .FIRE_COMMAND,
 
           disabled:
-            procedureState !==
-            FIRE_PROCEDURE_STATES
-              .TARGET_DESIGNATED,
+            !canIssueFireCommand,
 
           onClick: () => {
             const result =
@@ -640,9 +613,7 @@ export function createFirePanel({
               );
 
             if (!result.success) {
-              onMessage(
-                result.reason,
-              );
+              onMessage(result.reason);
 
               return;
             }
@@ -650,7 +621,7 @@ export function createFirePanel({
             onStateChanged();
 
             onMessage(
-              "사격명령 하달. 장전을 실시하세요.",
+              getLoadingMessage(result),
             );
 
             render();
@@ -661,41 +632,27 @@ export function createFirePanel({
 
     wrapper.append(
       createButton(
-        "장전",
+        fireControl.loading
+          ? (
+              `장전 중: ${getAmmunitionLabel(
+                fireControl.loadingAmmunition,
+              )}`
+            )
+          : fireControl.loaded
+            ? (
+                `장전 완료: ${getAmmunitionLabel(
+                  fireControl.loadedAmmunition,
+                )}`
+              )
+            : "자동 장전 대기",
         {
           current:
             procedureState ===
-            FIRE_PROCEDURE_STATES
-              .LOADING,
+              FIRE_PROCEDURE_STATES.LOADING ||
+            procedureState ===
+              FIRE_PROCEDURE_STATES.RELOADING,
 
-          disabled:
-            procedureState !==
-            FIRE_PROCEDURE_STATES
-              .FIRE_COMMAND,
-
-          onClick: () => {
-            const result =
-              beginLoading(
-                unit,
-                getTurn(),
-              );
-
-            if (!result.success) {
-              onMessage(
-                result.reason,
-              );
-
-              return;
-            }
-
-            onStateChanged();
-
-            onMessage(
-              "장전 중. 다음 턴에 완료됩니다.",
-            );
-
-            render();
-          },
+          disabled: true,
         },
       ),
     );
@@ -755,16 +712,12 @@ export function createFirePanel({
                 getTurn(),
                 {
                   moving:
-                    isUnitMoving(
-                      unit,
-                    ),
+                    isUnitMoving(unit),
                 },
               );
 
             if (!result.success) {
-              onMessage(
-                result.reason,
-              );
+              onMessage(result.reason);
 
               return;
             }
@@ -773,50 +726,6 @@ export function createFirePanel({
               unit,
               result,
             );
-          },
-        },
-      ),
-    );
-
-    wrapper.append(
-      createButton(
-        "재장전",
-        {
-          current:
-            procedureState ===
-            FIRE_PROCEDURE_STATES
-              .RELOADING,
-
-          disabled:
-            procedureState !==
-              FIRE_PROCEDURE_STATES
-                .FIRED &&
-            procedureState !==
-              FIRE_PROCEDURE_STATES
-                .ADJUSTING,
-
-          onClick: () => {
-            const result =
-              beginReloading(
-                unit,
-                getTurn(),
-              );
-
-            if (!result.success) {
-              onMessage(
-                result.reason,
-              );
-
-              return;
-            }
-
-            onStateChanged();
-
-            onMessage(
-              "재장전 중. 다음 턴에 완료됩니다.",
-            );
-
-            render();
           },
         },
       ),
@@ -843,16 +752,12 @@ export function createFirePanel({
                 getTurn(),
                 {
                   moving:
-                    isUnitMoving(
-                      unit,
-                    ),
+                    isUnitMoving(unit),
                 },
               );
 
             if (!result.success) {
-              onMessage(
-                result.reason,
-              );
+              onMessage(result.reason);
 
               return;
             }
@@ -875,10 +780,10 @@ export function createFirePanel({
             FIRE_STATES.STOPPED,
 
           disabled:
-            procedureState ===
-              FIRE_PROCEDURE_STATES
-                .STOPPED &&
-            !fireControl.targetHex,
+            fireControl.state ===
+              FIRE_STATES.STOPPED &&
+            !fireControl.targetHex &&
+            !fireControl.gunnerAutonomous,
 
           onClick: () => {
             ceaseFire(unit);
@@ -891,8 +796,23 @@ export function createFirePanel({
 
             onStateChanged();
 
+            const loadingMessage =
+              fireControl.loading
+                ? (
+                    ` ${getAmmunitionLabel(
+                      fireControl.loadingAmmunition,
+                    )} 장전은 계속됩니다.`
+                  )
+                : fireControl.loaded
+                  ? (
+                      ` 현재 장전탄 ${getAmmunitionLabel(
+                        fireControl.loadedAmmunition,
+                      )}은 유지됩니다.`
+                    )
+                  : "";
+
             onMessage(
-              "모든 사격과 장전을 중지했습니다.",
+              `사격 절차를 종료했습니다.${loadingMessage}`,
             );
 
             render();
@@ -901,26 +821,19 @@ export function createFirePanel({
       ),
     );
 
-    if (
-      fireControl.lastShotResult
-    ) {
+    if (fireControl.lastShotResult) {
       const resultPanel =
-        document.createElement(
-          "div",
-        );
+        document.createElement("div");
 
       resultPanel.className =
         "fire-result-status";
 
       resultPanel.textContent =
         formatShotResult(
-          fireControl
-            .lastShotResult,
+          fireControl.lastShotResult,
         );
 
-      wrapper.append(
-        resultPanel,
-      );
+      wrapper.append(resultPanel);
     }
 
     container.append(wrapper);
@@ -938,11 +851,10 @@ export function createFirePanel({
         targetHex:
           procedure.targetHex
             ? {
-                ...procedure
-                  .targetHex,
+                ...procedure.targetHex,
               }
             : null,
       };
     },
   };
-      }
+}
