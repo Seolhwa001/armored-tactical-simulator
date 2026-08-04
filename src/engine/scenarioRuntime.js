@@ -1,476 +1,393 @@
-// src/engine/scenarioRuntime.js — 전체 교체
-
+// src/engine/scenarioRuntime.js — 전체 교체, 1~286행
 
 import {
-
-createScenario,
-
-getDefaultScenario,
-
+  createScenario,
+  getDefaultScenario,
 } from "./scenario.js";
 
-
 import {
-
-DETECTION_STAGES,
-
+  DETECTION_STAGES,
 } from "./detection.js";
 
-
 import {
-
-UNIT_ACTIONS,
-
+  UNIT_ACTIONS,
 } from "./actions.js";
 
-
 import {
-
-createFireControl,
-
+  createFireControl,
 } from "./fireControl.js";
 
-
 import {
-
-createTurretControl,
-
+  createTurretControl,
 } from "./turretControl.js";
 
+export const CREW_ROLES = Object.freeze({
+  COMMANDER: "commander",
+  GUNNER: "gunner",
+  DRIVER: "driver",
+  LOADER: "loader",
+});
+
+export const HUNTER_KILLER_STATES = Object.freeze({
+  SEARCHING: "searching",
+  TARGET_FOUND: "target-found",
+  DESIGNATING: "designating",
+  HANDOFF: "handoff",
+  TRACKING: "tracking",
+});
 
 function createRuntimeAction() {
-
-return {
-
-type: UNIT_ACTIONS.IDLE,
-
-targetHex: null,
-
-targetUnitId: null,
-
-direction: null,
-
-startedTurn: 1,
-
-persistent: true,
-
-};
-
+  return {
+    type: UNIT_ACTIONS.IDLE,
+    targetHex: null,
+    targetUnitId: null,
+    direction: null,
+    startedTurn: 1,
+    persistent: true,
+  };
 }
 
+function createCrewObservation(
+  hullDirection,
+) {
+  return {
+    activeCrewRole:
+      CREW_ROLES.COMMANDER,
+
+    observers: {
+      [CREW_ROLES.COMMANDER]: {
+        enabled: true,
+        direction: hullDirection,
+        fieldOfView: Math.PI / 2,
+        rangeFactor: 1,
+        identificationFactor: 1,
+      },
+
+      [CREW_ROLES.GUNNER]: {
+        enabled: true,
+        direction: hullDirection,
+        fieldOfView: Math.PI / 3,
+        rangeFactor: 0.85,
+        identificationFactor: 0.9,
+      },
+
+      [CREW_ROLES.DRIVER]: {
+        enabled: true,
+        direction: hullDirection,
+        fieldOfView: Math.PI / 2.5,
+        rangeFactor: 0.55,
+        identificationFactor: 0.45,
+      },
+
+      [CREW_ROLES.LOADER]: {
+        enabled: true,
+        direction: hullDirection,
+        fieldOfView: Math.PI / 2.2,
+        rangeFactor: 0.6,
+        identificationFactor: 0.5,
+      },
+    },
+
+    commanderIndependentSight: {
+      operational: true,
+      direction: hullDirection,
+      targetUnitId: null,
+      locked: false,
+      tracking: false,
+    },
+
+    hunterKiller: {
+      enabled: true,
+
+      state:
+        HUNTER_KILLER_STATES.SEARCHING,
+
+      detectedTargetUnitId: null,
+      designatedTargetUnitId: null,
+      handedOffTargetUnitId: null,
+    },
+  };
+}
 
 function createRuntimeSensors(
-
-unitData,
-
-isTank,
-
+  unitData,
+  isTank,
 ) {
+  if (isTank) {
+    return {
+      surroundingRecon:
+        unitData.surroundingRecon ??
+        75,
 
-if (isTank) {
+      directionalObservation:
+        unitData.directionalObservation ??
+        55,
+    };
+  }
 
-return {
+  const observation =
+    unitData.observation ??
+    50;
 
-surroundingRecon:
-
-unitData.surroundingRecon ??
-
-75,
-
-
-  directionalObservation:  
-    unitData  
-      .directionalObservation ??  
-    55,  
-};  
-
-
-
+  return {
+    surroundingRecon: observation,
+    directionalObservation: observation,
+  };
 }
-
-
-const observation =
-
-unitData.observation ??
-
-50;
-
-
-return {
-
-surroundingRecon:
-
-observation,
-
-
-directionalObservation:  
-  observation,  
-
-
-
-};
-
-}
-
 
 function createRuntimeProtection(
-
-isTank,
-
+  isTank,
 ) {
-
-if (isTank) {
-
-return {
-
-explosionResistance: 25,
-
-opticsCondition: "정상",
-
-};
-
+  return isTank
+    ? {
+        explosionResistance: 25,
+        opticsCondition: "정상",
+      }
+    : {
+        explosionResistance: 5,
+        opticsCondition: null,
+      };
 }
 
+function createRuntimeHealth(
+  unitData,
+  isTank,
+) {
+  const maximum =
+    unitData.maximumHealth ??
+    (isTank ? 100 : 1);
 
-return {
+  return {
+    current:
+      unitData.health ??
+      maximum,
 
-explosionResistance: 5,
+    maximum,
 
-opticsCondition: null,
-
-};
-
+    lastDamage: 0,
+    lastHitTurn: null,
+  };
 }
-
 
 function createRuntimeUnit(
-
-unitData,
-
+  unitData,
 ) {
+  const friendly =
+    unitData.side ===
+    "friendly";
 
-const friendly =
+  const isTank =
+    unitData.type ===
+    "tank";
 
-unitData.side ===
+  const hullDirection =
+    unitData.hullDirection ??
+    0;
 
-"friendly";
+  const turretDirection =
+    unitData.turretDirection ??
+    hullDirection;
 
+  const baseConcealment =
+    unitData.concealment ??
+    0;
 
-const isTank =
+  return {
+    ...unitData,
 
-unitData.type ===
+    condition: "정상",
+    command: "대기",
+    destroyed: false,
 
-"tank";
+    destination: null,
+    plannedPath: [],
+    movementHistory: [],
 
+    hullDirection,
+    turretDirection,
+    direction: hullDirection,
 
-const hullDirection =
+    detectionStage:
+      friendly
+        ? DETECTION_STAGES.IDENTIFIED
+        : DETECTION_STAGES.HIDDEN,
 
-unitData.hullDirection ??
+    visible: friendly,
+    detected: friendly,
+    identified: friendly,
 
-0;
+    lastKnownPosition: null,
 
+    detectionConfidence:
+      friendly
+        ? 100
+        : 0,
 
-const turretDirection =
+    baseConcealment,
+    concealment:
+      baseConcealment,
 
-unitData.turretDirection ??
+    temporaryExposure: 0,
+    exposedUntilTurn: null,
 
-hullDirection;
+    hatchState:
+      isTank
+        ? "open"
+        : null,
 
+    sensors:
+      createRuntimeSensors(
+        unitData,
+        isTank,
+      ),
 
-const baseConcealment =
+    crewObservation:
+      isTank
+        ? createCrewObservation(
+            hullDirection,
+          )
+        : null,
 
-unitData.concealment ??
+    action:
+      createRuntimeAction(),
 
-0;
+    fireControl:
+      isTank
+        ? createFireControl()
+        : null,
 
+    turretControl:
+      isTank
+        ? createTurretControl(
+            unitData,
+          )
+        : null,
 
-return {
+    protection:
+      createRuntimeProtection(
+        isTank,
+      ),
 
-...unitData,
-
-
-condition: "정상",  
-command: "대기",  
-destroyed: false,  
-
-destination: null,  
-plannedPath: [],  
-movementHistory: [],  
-
-hullDirection,  
-turretDirection,  
-direction: hullDirection,  
-
-detectionStage:  
-  friendly  
-    ? DETECTION_STAGES.IDENTIFIED  
-    : DETECTION_STAGES.HIDDEN,  
-
-visible: friendly,  
-detected: friendly,  
-identified: friendly,  
-
-lastKnownPosition: null,  
-
-detectionConfidence:  
-  friendly  
-    ? 100  
-    : 0,  
-
-baseConcealment,  
-concealment:  
-  baseConcealment,  
-
-temporaryExposure: 0,  
-exposedUntilTurn: null,  
-
-hatchState:  
-  isTank  
-    ? "open"  
-    : null,  
-
-sensors:  
-  createRuntimeSensors(  
-    unitData,  
-    isTank,  
-  ),  
-
-action:  
-  createRuntimeAction(),  
-
-fireControl:  
-  isTank  
-    ? createFireControl()  
-    : null,  
-
-turretControl:  
-  isTank  
-    ? createTurretControl(  
-        unitData,  
-      )  
-    : null,  
-
-protection:  
-  createRuntimeProtection(  
-    isTank,  
-  ),  
-
-
-
-};
-
+    health:
+      createRuntimeHealth(
+        unitData,
+        isTank,
+      ),
+  };
 }
-
 
 function createRuntimeEvent(
-
-eventData,
-
+  eventData,
 ) {
-
-return {
-
-...eventData,
-
-
-active: false,  
-completed: false,  
-triggeredTurn: null,  
-
-
-
-};
-
+  return {
+    ...eventData,
+    active: false,
+    completed: false,
+    triggeredTurn: null,
+  };
 }
-
 
 function getScenarioSource(
-
-scenarioId,
-
+  scenarioId,
 ) {
-
-if (scenarioId) {
-
-return createScenario(
-
-scenarioId,
-
-);
-
+  return scenarioId
+    ? createScenario(scenarioId)
+    : getDefaultScenario();
 }
-
-
-return getDefaultScenario();
-
-}
-
 
 export function loadScenario(
-
-scenarioId = null,
-
+  scenarioId = null,
 ) {
+  const source =
+    getScenarioSource(
+      scenarioId,
+    );
 
-const source =
+  return {
+    id: source.id,
+    name: source.name,
+    description:
+      source.description,
 
-getScenarioSource(
+    objectives: [
+      ...source.objectives,
+    ],
 
-scenarioId,
+    units: [
+      ...source.playerUnits,
+      ...source.enemyUnits,
+    ].map(
+      createRuntimeUnit,
+    ),
 
-);
+    events: (
+      source.events ??
+      []
+    ).map(
+      createRuntimeEvent,
+    ),
 
+    victoryConditions:
+      structuredClone(
+        source.victoryConditions ??
+        [],
+      ),
 
-return {
+    failureConditions:
+      structuredClone(
+        source.failureConditions ??
+        [],
+      ),
 
-id: source.id,
-
-name: source.name,
-
-description:
-
-source.description,
-
-
-objectives: [  
-  ...source.objectives,  
-],  
-
-units: [  
-  ...source.playerUnits,  
-  ...source.enemyUnits,  
-].map(  
-  createRuntimeUnit,  
-),  
-
-events: (  
-  source.events ??  
-  []  
-).map(  
-  createRuntimeEvent,  
-),  
-
-victoryConditions:  
-  structuredClone(  
-    source  
-      .victoryConditions ??  
-      [],  
-  ),  
-
-failureConditions:  
-  structuredClone(  
-    source  
-      .failureConditions ??  
-      [],  
-  ),  
-
-status: "running",  
-
-turn: 1,  
-startedTurn: 1,  
-completedTurn: null,  
-
-
-
-};
-
+    status: "running",
+    turn: 1,
+    startedTurn: 1,
+    completedTurn: null,
+  };
 }
-
 
 export function restartScenario(
-
-runtimeScenario,
-
+  runtimeScenario,
 ) {
-
-return loadScenario(
-
-runtimeScenario.id,
-
-);
-
+  return loadScenario(
+    runtimeScenario.id,
+  );
 }
-
 
 export function getPlayerUnit(
-
-runtimeScenario,
-
+  runtimeScenario,
 ) {
-
-return runtimeScenario.units.find(
-
-(unit) =>
-
-unit.side ===
-
-"friendly" &&
-
-unit.role ===
-
-"player",
-
-);
-
+  return runtimeScenario.units.find(
+    (unit) =>
+      unit.side === "friendly" &&
+      unit.role === "player",
+  );
 }
-
 
 export function getFriendlyUnits(
-
-runtimeScenario,
-
+  runtimeScenario,
 ) {
-
-return runtimeScenario.units.filter(
-
-(unit) =>
-
-unit.side ===
-
-"friendly",
-
-);
-
+  return runtimeScenario.units.filter(
+    (unit) =>
+      unit.side === "friendly",
+  );
 }
-
 
 export function getEnemyUnits(
-
-runtimeScenario,
-
+  runtimeScenario,
 ) {
-
-return runtimeScenario.units.filter(
-
-(unit) =>
-
-unit.side ===
-
-"enemy",
-
-);
-
+  return runtimeScenario.units.filter(
+    (unit) =>
+      unit.side === "enemy",
+  );
 }
-
 
 export function getUnitById(
-
-runtimeScenario,
-
-unitId,
-
+  runtimeScenario,
+  unitId,
 ) {
-
-return runtimeScenario.units.find(
-
-(unit) =>
-
-unit.id ===
-
-unitId,
-
-);
-
+  return runtimeScenario.units.find(
+    (unit) =>
+      unit.id === unitId,
+  );
 }
-
-
