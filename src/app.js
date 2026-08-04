@@ -1,3 +1,5 @@
+// src/app.js — 전체 교체, 1~1527행
+
 import {
   planUnitMovement,
   cancelUnitMovement,
@@ -27,6 +29,9 @@ import {
 const HEX_RADIUS = 28;
 const MAP_COLUMNS = 18;
 const MAP_ROWS = 18;
+
+const EFFECT_DURATION = 1500;
+const CONTACT_EFFECT_DURATION = 1800;
 
 const TERRAIN_TYPES = {
   open: {
@@ -169,6 +174,13 @@ const MOVEMENT_COMMAND_IDS = new Set([
   "change-position",
 ]);
 
+const TARGET_COMMAND_IDS = new Set([
+  "observation",
+  "recon-by-fire",
+  "fire-target",
+  ...MOVEMENT_COMMAND_IDS,
+]);
+
 const state = {
   runtimeScenario: null,
   units: [],
@@ -183,6 +195,14 @@ const state = {
 
   difficulty: "standard",
   developerMode: false,
+
+  fog: {
+    current: new Set(),
+    explored: new Set(),
+  },
+
+  effects: [],
+  animationFrameId: null,
 
   fireProcedure: {
     active: false,
@@ -278,6 +298,30 @@ function terrainKey(column, row) {
   return `${column},${row}`;
 }
 
+function randomBetween(minimum, maximum) {
+  return (
+    minimum +
+    Math.random() *
+      (maximum - minimum)
+  );
+}
+
+function randomInteger(minimum, maximum) {
+  return Math.floor(
+    randomBetween(
+      minimum,
+      maximum + 1,
+    ),
+  );
+}
+
+function clamp(value, minimum, maximum) {
+  return Math.min(
+    maximum,
+    Math.max(minimum, value),
+  );
+}
+
 function seededValue(
   column,
   row,
@@ -288,17 +332,35 @@ function seededValue(
       column * 12.9898 +
         row * 78.233 +
         seed * 31.719,
-    ) * 43758.5453;
+    ) *
+    43758.5453;
 
   return value - Math.floor(value);
 }
 
-function createTerrain() {
-  const seed =
-    Math.floor(
-      Math.random() * 100000,
-    );
+function getTerrain(
+  column,
+  row,
+) {
+  return state.terrain.get(
+    terrainKey(column, row),
+  );
+}
 
+function setTerrainType(
+  column,
+  row,
+  type,
+) {
+  const terrain =
+    getTerrain(column, row);
+
+  if (terrain) {
+    terrain.type = type;
+  }
+}
+
+function createBaseTerrain(seed) {
   state.terrain.clear();
 
   for (
@@ -311,54 +373,433 @@ function createTerrain() {
       column <= MAP_COLUMNS;
       column += 1
     ) {
-      const random =
+      const grassValue =
         seededValue(
           column,
           row,
           seed,
         );
 
-      let type = "open";
-
-      if (
-        Math.abs(row) <= 1 &&
-        column % 4 !== 0
-      ) {
-        type = "road";
-      } else if (
-        column === 7 &&
-        row > -9 &&
-        row < 10
-      ) {
-        type = "water";
-      } else if (random < 0.18) {
-        type = "forest";
-      } else if (random < 0.31) {
-        type = "ridge";
-      } else if (random < 0.55) {
-        type = "grass";
-      }
-
       state.terrain.set(
         terrainKey(column, row),
         {
           column,
           row,
-          type,
+
+          type:
+            grassValue < 0.42
+              ? "grass"
+              : "open",
 
           elevation: Math.round(
-            10 +
+            8 +
               seededValue(
                 column + 17,
                 row - 9,
                 seed,
               ) *
-                35,
+                42,
           ),
         },
       );
     }
   }
+}
+
+function generateCluster(
+  type,
+  centerColumn,
+  centerRow,
+  radius,
+  density,
+  seed,
+) {
+  for (
+    let row =
+      centerRow - radius;
+    row <=
+    centerRow + radius;
+    row += 1
+  ) {
+    for (
+      let column =
+        centerColumn - radius;
+      column <=
+      centerColumn + radius;
+      column += 1
+    ) {
+      const distance =
+        Math.hypot(
+          column - centerColumn,
+          row - centerRow,
+        );
+
+      if (distance > radius) {
+        continue;
+      }
+
+      const edgeFactor =
+        1 -
+        distance /
+          (radius + 0.5);
+
+      const value =
+        seededValue(
+          column,
+          row,
+          seed,
+        );
+
+      if (
+        value <
+        density *
+          (0.4 +
+            edgeFactor * 0.8)
+      ) {
+        setTerrainType(
+          column,
+          row,
+          type,
+        );
+      }
+    }
+  }
+}
+
+function generateTerrainClusters(seed) {
+  const forestCount =
+    randomInteger(5, 9);
+
+  const ridgeCount =
+    randomInteger(4, 7);
+
+  for (
+    let index = 0;
+    index < forestCount;
+    index += 1
+  ) {
+    generateCluster(
+      "forest",
+      randomInteger(
+        -MAP_COLUMNS + 3,
+        MAP_COLUMNS - 3,
+      ),
+      randomInteger(
+        -MAP_ROWS + 3,
+        MAP_ROWS - 3,
+      ),
+      randomInteger(2, 4),
+      randomBetween(0.55, 0.85),
+      seed + index * 71,
+    );
+  }
+
+  for (
+    let index = 0;
+    index < ridgeCount;
+    index += 1
+  ) {
+    generateCluster(
+      "ridge",
+      randomInteger(
+        -MAP_COLUMNS + 3,
+        MAP_COLUMNS - 3,
+      ),
+      randomInteger(
+        -MAP_ROWS + 3,
+        MAP_ROWS - 3,
+      ),
+      randomInteger(2, 5),
+      randomBetween(0.45, 0.75),
+      seed + 1000 + index * 83,
+    );
+  }
+}
+
+function generateRoad() {
+  const horizontal =
+    Math.random() < 0.5;
+
+  const offset =
+    horizontal
+      ? randomInteger(
+          -Math.floor(
+            MAP_ROWS * 0.55,
+          ),
+          Math.floor(
+            MAP_ROWS * 0.55,
+          ),
+        )
+      : randomInteger(
+          -Math.floor(
+            MAP_COLUMNS * 0.55,
+          ),
+          Math.floor(
+            MAP_COLUMNS * 0.55,
+          ),
+        );
+
+  let drift = 0;
+
+  if (horizontal) {
+    for (
+      let column = -MAP_COLUMNS;
+      column <= MAP_COLUMNS;
+      column += 1
+    ) {
+      if (Math.random() < 0.24) {
+        drift +=
+          Math.random() < 0.5
+            ? -1
+            : 1;
+      }
+
+      drift = clamp(
+        drift,
+        -4,
+        4,
+      );
+
+      const row =
+        offset + drift;
+
+      setTerrainType(
+        column,
+        row,
+        "road",
+      );
+
+      if (
+        Math.random() < 0.35
+      ) {
+        setTerrainType(
+          column,
+          row + 1,
+          "road",
+        );
+      }
+    }
+  } else {
+    for (
+      let row = -MAP_ROWS;
+      row <= MAP_ROWS;
+      row += 1
+    ) {
+      if (Math.random() < 0.24) {
+        drift +=
+          Math.random() < 0.5
+            ? -1
+            : 1;
+      }
+
+      drift = clamp(
+        drift,
+        -4,
+        4,
+      );
+
+      const column =
+        offset + drift;
+
+      setTerrainType(
+        column,
+        row,
+        "road",
+      );
+
+      if (
+        Math.random() < 0.35
+      ) {
+        setTerrainType(
+          column + 1,
+          row,
+          "road",
+        );
+      }
+    }
+  }
+}
+
+function generateRiver() {
+  const vertical =
+    Math.random() < 0.5;
+
+  const baseOffset =
+    vertical
+      ? randomInteger(
+          -Math.floor(
+            MAP_COLUMNS * 0.6,
+          ),
+          Math.floor(
+            MAP_COLUMNS * 0.6,
+          ),
+        )
+      : randomInteger(
+          -Math.floor(
+            MAP_ROWS * 0.6,
+          ),
+          Math.floor(
+            MAP_ROWS * 0.6,
+          ),
+        );
+
+  const amplitude =
+    randomBetween(2.5, 6);
+
+  const frequency =
+    randomBetween(0.18, 0.34);
+
+  const phase =
+    randomBetween(
+      0,
+      Math.PI * 2,
+    );
+
+  if (vertical) {
+    for (
+      let row = -MAP_ROWS;
+      row <= MAP_ROWS;
+      row += 1
+    ) {
+      const curve =
+        Math.sin(
+          row * frequency +
+            phase,
+        ) *
+          amplitude +
+        Math.sin(
+          row *
+            frequency *
+            0.43 +
+            phase * 1.7,
+        ) *
+          2;
+
+      const column =
+        Math.round(
+          baseOffset + curve,
+        );
+
+      setTerrainType(
+        column,
+        row,
+        "water",
+      );
+
+      if (
+        Math.random() < 0.55
+      ) {
+        setTerrainType(
+          column + 1,
+          row,
+          "water",
+        );
+      }
+    }
+  } else {
+    for (
+      let column = -MAP_COLUMNS;
+      column <= MAP_COLUMNS;
+      column += 1
+    ) {
+      const curve =
+        Math.sin(
+          column * frequency +
+            phase,
+        ) *
+          amplitude +
+        Math.sin(
+          column *
+            frequency *
+            0.43 +
+            phase * 1.7,
+        ) *
+          2;
+
+      const row =
+        Math.round(
+          baseOffset + curve,
+        );
+
+      setTerrainType(
+        column,
+        row,
+        "water",
+      );
+
+      if (
+        Math.random() < 0.55
+      ) {
+        setTerrainType(
+          column,
+          row + 1,
+          "water",
+        );
+      }
+    }
+  }
+}
+
+function carvePlayableCorridor() {
+  const corridorRow =
+    randomInteger(-4, 4);
+
+  for (
+    let column = -MAP_COLUMNS;
+    column <= MAP_COLUMNS;
+    column += 1
+  ) {
+    const row =
+      corridorRow +
+      Math.round(
+        Math.sin(column * 0.28) *
+          2,
+      );
+
+    const terrain =
+      getTerrain(column, row);
+
+    if (
+      terrain?.type === "water"
+    ) {
+      terrain.type = "road";
+    }
+
+    const upper =
+      getTerrain(
+        column,
+        row - 1,
+      );
+
+    const lower =
+      getTerrain(
+        column,
+        row + 1,
+      );
+
+    if (
+      upper &&
+      upper.type === "water" &&
+      lower &&
+      lower.type === "water"
+    ) {
+      upper.type = "open";
+    }
+  }
+}
+
+function createTerrain() {
+  const seed =
+    randomInteger(
+      1,
+      1000000,
+    );
+
+  createBaseTerrain(seed);
+  generateTerrainClusters(seed);
+  generateRiver();
+  generateRoad();
+  carvePlayableCorridor();
 }
 
 function getAvailablePlacementHexes() {
@@ -385,16 +826,36 @@ function getAvailablePlacementHexes() {
 function ensureUnitHexesPassable() {
   state.units.forEach((unit) => {
     const terrain =
-      state.terrain.get(
-        terrainKey(
-          unit.column,
-          unit.row,
-        ),
+      getTerrain(
+        unit.column,
+        unit.row,
       );
 
     if (terrain) {
       terrain.type = "open";
     }
+
+    getHexNeighbors(
+      unit.column,
+      unit.row,
+    )
+      .slice(0, 2)
+      .forEach((neighbor) => {
+        const neighborTerrain =
+          getTerrain(
+            neighbor.column,
+            neighbor.row,
+          );
+
+        if (
+          neighborTerrain &&
+          neighborTerrain.type ===
+            "water"
+        ) {
+          neighborTerrain.type =
+            "open";
+        }
+      });
   });
 }
 
@@ -430,7 +891,10 @@ function initializeScenario() {
   state.selectedCommand = null;
   state.activeCategory = null;
 
+  state.effects = [];
+
   resetFireProcedure();
+  resetFog();
 
   ensureUnitHexesPassable();
 
@@ -438,6 +902,8 @@ function initializeScenario() {
     state.runtimeScenario,
     state.turn,
   );
+
+  updateFogOfWar();
 
   elements.turnLabel.textContent =
     "TURN 1";
@@ -476,8 +942,10 @@ function restartCurrentScenario() {
   state.selectedHex = null;
   state.selectedCommand = null;
   state.activeCategory = null;
+  state.effects = [];
 
   resetFireProcedure();
+  resetFog();
 
   ensureUnitHexesPassable();
 
@@ -485,6 +953,8 @@ function restartCurrentScenario() {
     state.runtimeScenario,
     state.turn,
   );
+
+  updateFogOfWar();
 
   elements.turnLabel.textContent =
     "TURN 1";
@@ -510,6 +980,11 @@ function restartCurrentScenario() {
   );
 }
 
+function resetFog() {
+  state.fog.current.clear();
+  state.fog.explored.clear();
+}
+
 function getSelectedUnit() {
   return state.units.find(
     (unit) =>
@@ -519,7 +994,8 @@ function getSelectedUnit() {
 }
 
 function updateSelectedUnitSummary() {
-  const unit = getSelectedUnit();
+  const unit =
+    getSelectedUnit();
 
   if (!unit) {
     elements.selectedUnitLabel.textContent =
@@ -553,7 +1029,8 @@ function showScreen(screenName) {
   const showMenu =
     screenName === "menu";
 
-  state.activeScreen = screenName;
+  state.activeScreen =
+    screenName;
 
   elements.menuScreen.hidden =
     !showMenu;
@@ -671,6 +1148,35 @@ function resetFireProcedure() {
   };
 }
 
+function createProcedureButton(
+  label,
+  active,
+  handler,
+) {
+  const button =
+    document.createElement(
+      "button",
+    );
+
+  button.type = "button";
+  button.className =
+    "command-option";
+
+  button.classList.toggle(
+    "is-selected",
+    active,
+  );
+
+  button.textContent = label;
+
+  button.addEventListener(
+    "click",
+    handler,
+  );
+
+  return button;
+}
+
 function renderFireProcedure() {
   elements.commandOptions.replaceChildren();
 
@@ -721,10 +1227,11 @@ function renderFireProcedure() {
         updateSelectedUnitSummary();
 
         setMapMessage(
-          "탄종을 선택한 후 목표 헥스를 지정하세요.",
+          "탄종 선택 후 지도에서 목표를 지정하세요.",
         );
 
         renderFireProcedure();
+        renderMap();
       },
     );
 
@@ -803,13 +1310,19 @@ function renderFireProcedure() {
           return;
         }
 
+        spawnFireEffect(
+          unit,
+          unit.fireControl.targetHex,
+          unit.fireControl.ammunition,
+        );
+
         setMapMessage(
           `${AMMUNITION_LABELS[unit.fireControl.ammunition]} 1발 발사`,
         );
 
         updateSelectedUnitSummary();
         renderFireProcedure();
-        renderMap();
+        startEffectAnimation();
       },
     );
 
@@ -840,13 +1353,19 @@ function renderFireProcedure() {
           return;
         }
 
+        spawnFireEffect(
+          unit,
+          unit.fireControl.targetHex,
+          unit.fireControl.ammunition,
+        );
+
         setMapMessage(
           "포수 자율사격을 시작했습니다.",
         );
 
         updateSelectedUnitSummary();
         renderFireProcedure();
-        renderMap();
+        startEffectAnimation();
       },
     );
 
@@ -864,6 +1383,10 @@ function renderFireProcedure() {
         FIRE_STATES.STOPPED,
       () => {
         ceaseFire(unit);
+
+        removeUnitFireEffects(
+          unit.id,
+        );
 
         resetFireProcedure();
 
@@ -884,34 +1407,6 @@ function renderFireProcedure() {
   elements.commandOptions.append(
     container,
   );
-}
-
-function createProcedureButton(
-  label,
-  active,
-  handler,
-) {
-  const button =
-    document.createElement("button");
-
-  button.type = "button";
-
-  button.className =
-    "command-option";
-
-  button.classList.toggle(
-    "is-selected",
-    active,
-  );
-
-  button.textContent = label;
-
-  button.addEventListener(
-    "click",
-    handler,
-  );
-
-  return button;
 }
 
 function selectCommand(
@@ -976,6 +1471,12 @@ function selectCommand(
       state.turn,
     );
 
+    updateFogOfWar();
+    updateDetection(
+      state.runtimeScenario,
+      state.turn,
+    );
+
     updateSelectedUnitSummary();
 
     setMapMessage(
@@ -1009,6 +1510,7 @@ function selectCommand(
       `${command.label}: 지도에서 목표 헥스를 선택하세요.`,
     );
 
+    renderMap();
     return;
   }
 
@@ -1069,7 +1571,6 @@ function worldToHex(
   worldY,
 ) {
   let nearest = null;
-
   let nearestDistance =
     Infinity;
 
@@ -1137,6 +1638,164 @@ function screenToWorld(
   };
 }
 
+function getHexNeighbors(
+  column,
+  row,
+) {
+  const directions =
+    row % 2 === 0
+      ? [
+          [-1, 0],
+          [1, 0],
+          [-1, -1],
+          [0, -1],
+          [-1, 1],
+          [0, 1],
+        ]
+      : [
+          [-1, 0],
+          [1, 0],
+          [0, -1],
+          [1, -1],
+          [0, 1],
+          [1, 1],
+        ];
+
+  return directions.map(
+    ([
+      columnOffset,
+      rowOffset,
+    ]) => ({
+      column:
+        column +
+        columnOffset,
+
+      row:
+        row +
+        rowOffset,
+    }),
+  );
+}
+
+function getHexesWithinRange(
+  origin,
+  range,
+) {
+  return Array.from(
+    state.terrain.values(),
+  ).filter(
+    (terrain) =>
+      getHexDistanceLocal(
+        origin,
+        terrain,
+      ) <= range,
+  );
+}
+
+function offsetToAxial(
+  column,
+  row,
+) {
+  return {
+    q:
+      column -
+      (
+        row -
+        (row & 1)
+      ) /
+        2,
+
+    r: row,
+  };
+}
+
+function getHexDistanceLocal(
+  first,
+  second,
+) {
+  const a =
+    offsetToAxial(
+      first.column,
+      first.row,
+    );
+
+  const b =
+    offsetToAxial(
+      second.column,
+      second.row,
+    );
+
+  const deltaQ =
+    a.q - b.q;
+
+  const deltaR =
+    a.r - b.r;
+
+  return (
+    Math.abs(deltaQ) +
+    Math.abs(deltaR) +
+    Math.abs(
+      deltaQ + deltaR
+    )
+  ) / 2;
+}
+
+function getObservationRange(unit) {
+  if (
+    unit.action?.type ===
+    UNIT_ACTIONS.RECON
+  ) {
+    return 10;
+  }
+
+  return 7;
+}
+
+function updateFogOfWar() {
+  state.fog.current.clear();
+
+  state.units
+    .filter(
+      (unit) =>
+        unit.side ===
+          "friendly" &&
+        !unit.destroyed,
+    )
+    .forEach((unit) => {
+      const range =
+        getObservationRange(unit);
+
+      getHexesWithinRange(
+        unit,
+        range,
+      ).forEach((hex) => {
+        const key =
+          terrainKey(
+            hex.column,
+            hex.row,
+          );
+
+        state.fog.current.add(
+          key,
+        );
+
+        state.fog.explored.add(
+          key,
+        );
+      });
+    });
+}
+
+function isTargetCommandActive() {
+  return (
+    state.selectedCommand
+      ?.needsTarget === true ||
+    TARGET_COMMAND_IDS.has(
+      state.selectedCommand?.id,
+    )
+  );
+}
+
 function selectUnit(unit) {
   if (
     unit.side === "enemy" &&
@@ -1180,11 +1839,9 @@ function getMovementCost(
   row,
 ) {
   const terrain =
-    state.terrain.get(
-      terrainKey(
-        column,
-        row,
-      ),
+    getTerrain(
+      column,
+      row,
     );
 
   if (!terrain) {
@@ -1196,52 +1853,11 @@ function getMovementCost(
   ].movementCost;
 }
 
-function getHexNeighbors(
-  column,
-  row,
-) {
-  const directions =
-    row % 2 === 0
-      ? [
-          [-1, 0],
-          [1, 0],
-          [-1, -1],
-          [0, -1],
-          [-1, 1],
-          [0, 1],
-        ]
-      : [
-          [-1, 0],
-          [1, 0],
-          [0, -1],
-          [1, -1],
-          [0, 1],
-          [1, 1],
-        ];
-
-  return directions.map(
-    ([
-      columnOffset,
-      rowOffset,
-    ]) => ({
-      column:
-        column +
-        columnOffset,
-
-      row:
-        row +
-        rowOffset,
-    }),
-  );
-}
-
 function selectHex(hex) {
   const terrain =
-    state.terrain.get(
-      terrainKey(
-        hex.column,
-        hex.row,
-      ),
+    getTerrain(
+      hex.column,
+      hex.row,
     );
 
   if (!terrain) {
@@ -1347,6 +1963,13 @@ function selectHex(hex) {
     state.selectedCommand =
       null;
 
+    updateFogOfWar();
+
+    updateDetection(
+      state.runtimeScenario,
+      state.turn,
+    );
+
     updateSelectedUnitSummary();
 
     setMapMessage(
@@ -1361,15 +1984,60 @@ function selectHex(hex) {
     command?.id ===
     "recon-by-fire"
   ) {
-    applyReconByFire(
-      state.runtimeScenario,
+    const hiddenBefore =
+      new Set(
+        state.units
+          .filter(
+            (candidate) =>
+              candidate.side ===
+                "enemy" &&
+              !candidate.visible,
+          )
+          .map(
+            (candidate) =>
+              candidate.id,
+          ),
+      );
+
+    const affected =
+      applyReconByFire(
+        state.runtimeScenario,
+        unit,
+        hex,
+        state.turn,
+      );
+
+    spawnFireEffect(
       unit,
       hex,
-      state.turn,
+      AMMUNITION_TYPES.HEAT,
+      {
+        reconByFire: true,
+      },
     );
 
     state.selectedCommand =
       null;
+
+    updateDetection(
+      state.runtimeScenario,
+      state.turn,
+    );
+
+    affected.forEach(
+      (enemy) => {
+        if (
+          hiddenBefore.has(
+            enemy.id,
+          ) &&
+          enemy.visible
+        ) {
+          spawnContactEffect(
+            enemy,
+          );
+        }
+      },
+    );
 
     updateSelectedUnitSummary();
 
@@ -1377,12 +2045,7 @@ function selectHex(hex) {
       `화력수색 시작: ${hex.column}, ${hex.row}`,
     );
 
-    updateDetection(
-      state.runtimeScenario,
-      state.turn,
-    );
-
-    renderMap();
+    startEffectAnimation();
     return;
   }
 
@@ -1503,7 +2166,7 @@ function handleMapTap(
       clientY - rect.top,
     );
 
-  const unit =
+  const tappedUnit =
     state.units.find(
       (candidate) => {
         if (
@@ -1531,11 +2194,35 @@ function handleMapTap(
     );
 
   if (
-    unit &&
-    state.selectedCommand?.id !==
-      "fire-target"
+    isTargetCommandActive()
   ) {
-    selectUnit(unit);
+    if (tappedUnit) {
+      selectHex({
+        column:
+          tappedUnit.column,
+
+        row:
+          tappedUnit.row,
+      });
+
+      return;
+    }
+
+    const targetHex =
+      worldToHex(
+        world.x,
+        world.y,
+      );
+
+    if (targetHex) {
+      selectHex(targetHex);
+    }
+
+    return;
+  }
+
+  if (tappedUnit) {
+    selectUnit(tappedUnit);
     return;
   }
 
@@ -1550,6 +2237,146 @@ function handleMapTap(
   }
 }
 
+function spawnFireEffect(
+  unit,
+  targetHex,
+  ammunition,
+  options = {},
+) {
+  if (
+    !unit ||
+    !targetHex
+  ) {
+    return;
+  }
+
+  const now =
+    performance.now();
+
+  state.effects.push({
+    id:
+      `${unit.id}-${now}-${Math.random()}`,
+
+    type: "fire",
+
+    unitId: unit.id,
+
+    from: {
+      column:
+        unit.column,
+
+      row:
+        unit.row,
+    },
+
+    to: {
+      column:
+        targetHex.column,
+
+      row:
+        targetHex.row,
+    },
+
+    ammunition,
+
+    reconByFire:
+      options.reconByFire ===
+      true,
+
+    startedAt: now,
+
+    expiresAt:
+      now +
+      EFFECT_DURATION,
+  });
+
+  startEffectAnimation();
+}
+
+function spawnContactEffect(unit) {
+  const now =
+    performance.now();
+
+  state.effects.push({
+    id:
+      `contact-${unit.id}-${now}`,
+
+    type: "contact",
+
+    unitId: unit.id,
+
+    position: {
+      column:
+        unit.column,
+
+      row:
+        unit.row,
+    },
+
+    startedAt: now,
+
+    expiresAt:
+      now +
+      CONTACT_EFFECT_DURATION,
+  });
+
+  startEffectAnimation();
+}
+
+function removeUnitFireEffects(unitId) {
+  state.effects =
+    state.effects.filter(
+      (effect) =>
+        !(
+          effect.type ===
+            "fire" &&
+          effect.unitId ===
+            unitId
+        ),
+    );
+}
+
+function removeExpiredEffects(now) {
+  state.effects =
+    state.effects.filter(
+      (effect) =>
+        effect.expiresAt >
+        now,
+    );
+}
+
+function startEffectAnimation() {
+  if (
+    state.animationFrameId !==
+    null
+  ) {
+    return;
+  }
+
+  const animate = (now) => {
+    removeExpiredEffects(now);
+
+    renderMap(now);
+
+    if (
+      state.effects.length > 0
+    ) {
+      state.animationFrameId =
+        requestAnimationFrame(
+          animate,
+        );
+    } else {
+      state.animationFrameId =
+        null;
+    }
+  };
+
+  state.animationFrameId =
+    requestAnimationFrame(
+      animate,
+    );
+}
+
 function executeTurn() {
   const selectedUnit =
     getSelectedUnit();
@@ -1557,6 +2384,21 @@ function executeTurn() {
   const executedCommand =
     selectedUnit?.command ??
     "대기";
+
+  const hiddenBefore =
+    new Set(
+      state.units
+        .filter(
+          (unit) =>
+            unit.side ===
+              "enemy" &&
+            !unit.visible,
+        )
+        .map(
+          (unit) =>
+            unit.id,
+        ),
+    );
 
   state.units
     .filter(
@@ -1577,6 +2419,41 @@ function executeTurn() {
     state.turn,
   );
 
+  state.units
+    .filter(
+      (unit) =>
+        unit.side ===
+          "friendly",
+    )
+    .forEach((unit) => {
+      if (
+        unit.action?.type ===
+          UNIT_ACTIONS.RECON_BY_FIRE &&
+        unit.action.targetHex
+      ) {
+        spawnFireEffect(
+          unit,
+          unit.action.targetHex,
+          AMMUNITION_TYPES.HEAT,
+          {
+            reconByFire: true,
+          },
+        );
+      }
+
+      if (
+        unit.fireControl?.state ===
+          FIRE_STATES.ADJUST &&
+        unit.fireControl.targetHex
+      ) {
+        spawnFireEffect(
+          unit,
+          unit.fireControl.targetHex,
+          unit.fireControl.ammunition,
+        );
+      }
+    });
+
   state.turn += 1;
   state.runtimeScenario.turn =
     state.turn;
@@ -1585,6 +2462,22 @@ function executeTurn() {
     state.runtimeScenario,
     state.turn,
   );
+
+  updateFogOfWar();
+
+  state.units
+    .filter(
+      (unit) =>
+        unit.side ===
+          "enemy" &&
+        unit.visible &&
+        hiddenBefore.has(
+          unit.id,
+        ),
+    )
+    .forEach(
+      spawnContactEffect,
+    );
 
   elements.turnLabel.textContent =
     `TURN ${state.turn}`;
@@ -1622,7 +2515,7 @@ function executeTurn() {
     renderFireProcedure();
   }
 
-  renderMap();
+  startEffectAnimation();
 }
 
 function resizeCanvas() {
@@ -1816,6 +2709,46 @@ function drawTerrainSymbol(
   }
 }
 
+function drawTargetPreview() {
+  if (
+    !isTargetCommandActive() ||
+    !state.selectedHex
+  ) {
+    return;
+  }
+
+  const point =
+    hexToWorld(
+      state.selectedHex.column,
+      state.selectedHex.row,
+    );
+
+  context.save();
+
+  context.strokeStyle =
+    "#ffd078";
+
+  context.fillStyle =
+    "rgba(255, 208, 120, 0.18)";
+
+  context.lineWidth = 3;
+
+  context.beginPath();
+
+  context.arc(
+    point.x,
+    point.y,
+    18,
+    0,
+    Math.PI * 2,
+  );
+
+  context.fill();
+  context.stroke();
+
+  context.restore();
+}
+
 function drawSelection(point) {
   context.beginPath();
 
@@ -1947,84 +2880,92 @@ function drawTankIcon(
   context.restore();
 }
 
-function drawInfantryObserverIcon(
-  point,
-) {
+function drawObserverIcon(point) {
   context.save();
 
-  context.strokeStyle =
-    "#ffd0c1";
+  context.translate(
+    point.x,
+    point.y,
+  );
 
   context.fillStyle =
-    "#9c5b4c";
+    "#8c4f45";
+
+  context.strokeStyle =
+    "#ffd2c4";
 
   context.lineWidth = 2;
 
+  context.fillRect(
+    -15,
+    -11,
+    30,
+    22,
+  );
+
+  context.strokeRect(
+    -15,
+    -11,
+    30,
+    22,
+  );
+
   context.beginPath();
 
   context.arc(
-    point.x,
-    point.y - 9,
-    5,
+    0,
+    0,
+    7,
     0,
     Math.PI * 2,
-  );
-
-  context.fill();
-  context.stroke();
-
-  context.beginPath();
-
-  context.moveTo(
-    point.x,
-    point.y - 4,
-  );
-
-  context.lineTo(
-    point.x,
-    point.y + 10,
-  );
-
-  context.moveTo(
-    point.x - 8,
-    point.y + 1,
-  );
-
-  context.lineTo(
-    point.x + 8,
-    point.y + 1,
-  );
-
-  context.moveTo(
-    point.x,
-    point.y + 10,
-  );
-
-  context.lineTo(
-    point.x - 7,
-    point.y + 18,
-  );
-
-  context.moveTo(
-    point.x,
-    point.y + 10,
-  );
-
-  context.lineTo(
-    point.x + 7,
-    point.y + 18,
   );
 
   context.stroke();
 
   context.beginPath();
 
-  context.arc(
-    point.x + 10,
-    point.y - 2,
-    4,
+  context.moveTo(
+    -7,
     0,
-    Math.PI * 2,
+  );
+
+  context.lineTo(
+    -2,
+    0,
+  );
+
+  context.moveTo(
+    2,
+    0,
+  );
+
+  context.lineTo(
+    7,
+    0,
+  );
+
+  context.stroke();
+
+  context.beginPath();
+
+  context.moveTo(
+    -9,
+    -15,
+  );
+
+  context.lineTo(
+    9,
+    -15,
+  );
+
+  context.moveTo(
+    0,
+    -15,
+  );
+
+  context.lineTo(
+    0,
+    -11,
   );
 
   context.stroke();
@@ -2093,6 +3034,99 @@ function drawContactIcon(point) {
     point.x,
     point.y + 8,
   );
+}
+
+function drawObservationArea(unit) {
+  if (
+    unit.side !== "friendly"
+  ) {
+    return;
+  }
+
+  const point =
+    hexToWorld(
+      unit.column,
+      unit.row,
+    );
+
+  if (
+    unit.action?.type ===
+    UNIT_ACTIONS.RECON
+  ) {
+    context.save();
+
+    context.fillStyle =
+      "rgba(112, 196, 151, 0.10)";
+
+    context.strokeStyle =
+      "rgba(150, 230, 184, 0.7)";
+
+    context.lineWidth = 2;
+    context.setLineDash([
+      7,
+      5,
+    ]);
+
+    context.beginPath();
+
+    context.arc(
+      point.x,
+      point.y,
+      HEX_RADIUS * 10,
+      0,
+      Math.PI * 2,
+    );
+
+    context.fill();
+    context.stroke();
+    context.restore();
+  }
+
+  if (
+    unit.action?.type ===
+      UNIT_ACTIONS.OBSERVE &&
+    Number.isFinite(
+      unit.action.direction,
+    )
+  ) {
+    const direction =
+      unit.action.direction;
+
+    const radius =
+      HEX_RADIUS * 13;
+
+    context.save();
+
+    context.fillStyle =
+      "rgba(105, 206, 153, 0.13)";
+
+    context.strokeStyle =
+      "rgba(146, 235, 185, 0.8)";
+
+    context.lineWidth = 2;
+
+    context.beginPath();
+
+    context.moveTo(
+      point.x,
+      point.y,
+    );
+
+    context.arc(
+      point.x,
+      point.y,
+      radius,
+      direction -
+        Math.PI / 4,
+      direction +
+        Math.PI / 4,
+    );
+
+    context.closePath();
+    context.fill();
+    context.stroke();
+    context.restore();
+  }
 }
 
 function drawActionDirection(unit) {
@@ -2194,9 +3228,7 @@ function drawUnit(unit) {
     unit.type ===
     "artillery-observer"
   ) {
-    drawInfantryObserverIcon(
-      point,
-    );
+    drawObserverIcon(point);
   } else if (
     unit.type ===
     "atgm-team"
@@ -2243,7 +3275,8 @@ function drawDestination(unit) {
     !Array.isArray(
       unit.plannedPath,
     ) ||
-    unit.plannedPath.length === 0
+    unit.plannedPath.length ===
+      0
   ) {
     return;
   }
@@ -2360,7 +3393,405 @@ function drawFireTarget(unit) {
   context.restore();
 }
 
-function renderMap() {
+function drawFog() {
+  if (state.developerMode) {
+    return;
+  }
+
+  state.terrain.forEach(
+    (terrain) => {
+      const key =
+        terrainKey(
+          terrain.column,
+          terrain.row,
+        );
+
+      const current =
+        state.fog.current.has(
+          key,
+        );
+
+      const explored =
+        state.fog.explored.has(
+          key,
+        );
+
+      if (current) {
+        return;
+      }
+
+      const point =
+        hexToWorld(
+          terrain.column,
+          terrain.row,
+        );
+
+      drawHexagon(
+        point.x,
+        point.y,
+        HEX_RADIUS - 0.5,
+        explored
+          ? "rgba(4, 8, 7, 0.48)"
+          : "rgba(2, 4, 4, 0.84)",
+        explored
+          ? "rgba(28, 39, 34, 0.45)"
+          : "rgba(5, 8, 7, 0.9)",
+        1,
+      );
+    },
+  );
+}
+
+function drawMuzzleFlash(
+  from,
+  progress,
+) {
+  const radius =
+    5 +
+    (1 - progress) * 13;
+
+  context.save();
+
+  context.fillStyle =
+    `rgba(255, 226, 132, ${1 - progress})`;
+
+  context.beginPath();
+
+  context.arc(
+    from.x,
+    from.y,
+    radius,
+    0,
+    Math.PI * 2,
+  );
+
+  context.fill();
+  context.restore();
+}
+
+function drawTrajectory(
+  from,
+  to,
+  progress,
+  ammunition,
+) {
+  context.save();
+
+  if (
+    ammunition ===
+    AMMUNITION_TYPES.CANISTER
+  ) {
+    context.strokeStyle =
+      `rgba(255, 211, 139, ${1 - progress * 0.45})`;
+
+    context.lineWidth = 1.5;
+
+    for (
+      let index = -3;
+      index <= 3;
+      index += 1
+    ) {
+      const angle =
+        Math.atan2(
+          to.y - from.y,
+          to.x - from.x,
+        ) +
+        index * 0.055;
+
+      const distance =
+        Math.hypot(
+          to.x - from.x,
+          to.y - from.y,
+        ) *
+        Math.min(
+          1,
+          progress * 1.3,
+        );
+
+      context.beginPath();
+
+      context.moveTo(
+        from.x,
+        from.y,
+      );
+
+      context.lineTo(
+        from.x +
+          Math.cos(angle) *
+            distance,
+
+        from.y +
+          Math.sin(angle) *
+            distance,
+      );
+
+      context.stroke();
+    }
+
+    context.restore();
+    return;
+  }
+
+  context.strokeStyle =
+    ammunition ===
+    AMMUNITION_TYPES.APFSDS
+      ? `rgba(220, 245, 255, ${1 - progress * 0.3})`
+      : `rgba(255, 191, 113, ${1 - progress * 0.35})`;
+
+  context.lineWidth =
+    ammunition ===
+    AMMUNITION_TYPES.APFSDS
+      ? 2
+      : 3;
+
+  context.beginPath();
+
+  context.moveTo(
+    from.x,
+    from.y,
+  );
+
+  const currentX =
+    from.x +
+    (to.x - from.x) *
+      progress;
+
+  const currentY =
+    from.y +
+    (to.y - from.y) *
+      progress;
+
+  context.lineTo(
+    currentX,
+    currentY,
+  );
+
+  context.stroke();
+  context.restore();
+}
+
+function drawImpact(
+  point,
+  progress,
+  ammunition,
+) {
+  if (progress < 0.55) {
+    return;
+  }
+
+  const impactProgress =
+    (
+      progress - 0.55
+    ) /
+    0.45;
+
+  context.save();
+
+  if (
+    ammunition ===
+    AMMUNITION_TYPES.SMOKE
+  ) {
+    for (
+      let index = 0;
+      index < 7;
+      index += 1
+    ) {
+      const angle =
+        index *
+        (
+          Math.PI * 2 / 7
+        );
+
+      const radius =
+        8 +
+        impactProgress * 20;
+
+      context.fillStyle =
+        `rgba(180, 190, 183, ${0.55 - impactProgress * 0.22})`;
+
+      context.beginPath();
+
+      context.arc(
+        point.x +
+          Math.cos(angle) *
+            radius *
+            0.55,
+
+        point.y +
+          Math.sin(angle) *
+            radius *
+            0.4,
+
+        8 +
+          impactProgress * 10,
+        0,
+        Math.PI * 2,
+      );
+
+      context.fill();
+    }
+
+    context.restore();
+    return;
+  }
+
+  const maximumRadius =
+    ammunition ===
+    AMMUNITION_TYPES.APFSDS
+      ? 12
+      : ammunition ===
+          AMMUNITION_TYPES.CANISTER
+        ? 20
+        : 30;
+
+  context.fillStyle =
+    ammunition ===
+    AMMUNITION_TYPES.APFSDS
+      ? `rgba(215, 240, 255, ${1 - impactProgress})`
+      : `rgba(255, 165, 67, ${0.8 - impactProgress * 0.7})`;
+
+  context.beginPath();
+
+  context.arc(
+    point.x,
+    point.y,
+    4 +
+      maximumRadius *
+        impactProgress,
+    0,
+    Math.PI * 2,
+  );
+
+  context.fill();
+
+  context.fillStyle =
+    `rgba(123, 103, 75, ${0.45 - impactProgress * 0.3})`;
+
+  context.beginPath();
+
+  context.arc(
+    point.x,
+    point.y + 6,
+    10 +
+      impactProgress * 24,
+    0,
+    Math.PI * 2,
+  );
+
+  context.fill();
+  context.restore();
+}
+
+function drawEffects(now) {
+  state.effects.forEach(
+    (effect) => {
+      const duration =
+        effect.expiresAt -
+        effect.startedAt;
+
+      const progress =
+        clamp(
+          (
+            now -
+            effect.startedAt
+          ) /
+            duration,
+          0,
+          1,
+        );
+
+      if (
+        effect.type ===
+        "fire"
+      ) {
+        const from =
+          hexToWorld(
+            effect.from.column,
+            effect.from.row,
+          );
+
+        const to =
+          hexToWorld(
+            effect.to.column,
+            effect.to.row,
+          );
+
+        drawMuzzleFlash(
+          from,
+          progress,
+        );
+
+        drawTrajectory(
+          from,
+          to,
+          Math.min(
+            1,
+            progress * 1.7,
+          ),
+          effect.ammunition,
+        );
+
+        drawImpact(
+          to,
+          progress,
+          effect.ammunition,
+        );
+      }
+
+      if (
+        effect.type ===
+        "contact"
+      ) {
+        const point =
+          hexToWorld(
+            effect.position.column,
+            effect.position.row,
+          );
+
+        context.save();
+
+        context.strokeStyle =
+          `rgba(255, 202, 90, ${1 - progress})`;
+
+        context.lineWidth = 3;
+
+        context.beginPath();
+
+        context.arc(
+          point.x,
+          point.y,
+          18 +
+            progress * 26,
+          0,
+          Math.PI * 2,
+        );
+
+        context.stroke();
+
+        context.fillStyle =
+          `rgba(255, 220, 130, ${1 - progress})`;
+
+        context.font =
+          "900 15px system-ui";
+
+        context.textAlign =
+          "center";
+
+        context.fillText(
+          "접촉",
+          point.x,
+          point.y - 25,
+        );
+
+        context.restore();
+      }
+    },
+  );
+}
+
+function renderMap(
+  now = performance.now(),
+) {
   const rect =
     elements.canvas
       .getBoundingClientRect();
@@ -2425,6 +3856,16 @@ function renderMap() {
     },
   );
 
+  state.units
+    .filter(
+      (unit) =>
+        unit.side ===
+        "friendly",
+    )
+    .forEach(
+      drawObservationArea,
+    );
+
   state.units.forEach(
     drawDestination,
   );
@@ -2435,11 +3876,18 @@ function renderMap() {
         unit.side ===
         "friendly",
     )
-    .forEach(drawFireTarget);
+    .forEach(
+      drawFireTarget,
+    );
+
+  drawTargetPreview();
 
   state.units.forEach(
     drawUnit,
   );
+
+  drawFog();
+  drawEffects(now);
 
   context.restore();
 
@@ -2468,8 +3916,9 @@ function drawDeveloperHud(
     `TURN: ${state.turn}`,
     `SELECTED: ${selected?.id ?? "NONE"}`,
     `ACTION: ${selected?.action?.type ?? "NONE"}`,
-    `UNITS: ${state.units.length}`,
-    `ENEMIES: ${enemies.length}`,
+    `FOG CURRENT: ${state.fog.current.size}`,
+    `FOG EXPLORED: ${state.fog.explored.size}`,
+    `EFFECTS: ${state.effects.length}`,
 
     ...enemies.map(
       (unit) =>
@@ -2477,7 +3926,7 @@ function drawDeveloperHud(
     ),
   ];
 
-  const width = 205;
+  const width = 220;
 
   const height =
     lines.length * 16 +
