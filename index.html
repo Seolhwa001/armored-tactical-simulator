@@ -26,7 +26,7 @@
 
   <link
     rel="stylesheet"
-    href="./src/styles.css?v=0.3.6"
+    href="./src/styles.css?v=0.3.9"
   >
 
 <script type="module">
@@ -76,7 +76,7 @@
 
   for (const file of modules) {
     try {
-      await import(`${file}?diagnostic=0.3.6`);
+      await import(`${file}?diagnostic=0.3.9`);
     } catch (error) {
       showError(file, error);
       throw error;
@@ -84,7 +84,7 @@
   }
 
   try {
-    await import("./src/app.js?diagnostic=0.3.6");
+    await import("./src/app.js?diagnostic=0.3.9");
   } catch (error) {
     showError("./src/app.js", error);
   }
@@ -104,7 +104,7 @@
       <section class="menu-screen">
         <header class="menu-screen__header">
           <p class="eyebrow">
-            ATS v0.3.6
+            ATS v0.3.9
           </p>
 
           <h1 id="game-title">
@@ -418,7 +418,7 @@
           </p>
 
           <p>
-            현재 단계: Sprint 3.4
+            현재 단계: Sprint 3.9
           </p>
         </div>
       </form>
