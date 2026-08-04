@@ -1,4 +1,4 @@
-// src/app.js — 전체 교체, 1~1018행
+// src/app.js — 전체 교체, 예상 1~560행
 
 import {
   advanceUnitMovement,
@@ -7,7 +7,6 @@ import {
 } from "./engine/movement.js";
 
 import {
-  HUNTER_KILLER_STATES,
   getPlayerUnit,
   loadScenario,
   restartScenario,
@@ -21,11 +20,16 @@ import {
 } from "./engine/detection.js";
 
 import {
-  UNIT_ACTIONS,
   applyReconByFire,
   processPersistentActions,
   setPersistentAction,
 } from "./engine/actions.js";
+
+import { UNIT_ACTIONS } from "./engine/constants/actionConstants.js";
+
+import {
+  HUNTER_KILLER_STATES,
+} from "./engine/runtime/runtimeConstants.js";
 
 import {
   AMMUNITION_TYPES,
@@ -76,6 +80,10 @@ import {
 } from "./render/effectRenderer.js";
 
 import {
+  drawSmokeAreas,
+} from "./render/smokeRenderer.js";
+
+import {
   createCommandPanel,
 } from "./ui/commandPanel.js";
 
@@ -87,11 +95,31 @@ import {
   bindApplicationEvents,
 } from "./ui/eventBindings.js";
 
+import {
+  createGameState,
+} from "./state/gameState.js";
+
+import {
+  createScenarioController,
+} from "./controllers/scenarioController.js";
+
+import {
+  createTurnController,
+} from "./controllers/turnController.js";
+
+import {
+  createMapInputController,
+} from "./controllers/mapInputController.js";
+
+import {
+  createCommandController,
+} from "./controllers/commandController.js";
+
 const HEX_RADIUS = 28;
 const MAP_COLUMNS = 18;
 const MAP_ROWS = 18;
 
-const TERRAIN_TYPES = {
+const TERRAIN_TYPES = Object.freeze({
   open: {
     name: "개활지",
     color: "#263325",
@@ -151,7 +179,7 @@ const TERRAIN_TYPES = {
     concealment: 0,
     cover: 0,
   },
-};
+});
 
 const MOVEMENT_COMMANDS = new Set([
   "normal-move",
@@ -170,131 +198,92 @@ const TARGET_COMMANDS = new Set([
 ]);
 
 const elements = {
-  menuScreen:
-    document.querySelector(
-      "#menu-screen",
-    ),
+  menuScreen: document.querySelector(
+    "#menu-screen",
+  ),
 
-  battleScreen:
-    document.querySelector(
-      "#battle-screen",
-    ),
+  battleScreen: document.querySelector(
+    "#battle-screen",
+  ),
 
-  turnLabel:
-    document.querySelector(
-      "#turn-label",
-    ),
+  turnLabel: document.querySelector(
+    "#turn-label",
+  ),
 
-  selectedUnitLabel:
-    document.querySelector(
-      "#selected-unit-label",
-    ),
+  selectedUnitLabel: document.querySelector(
+    "#selected-unit-label",
+  ),
 
-  currentCommandLabel:
-    document.querySelector(
-      "#current-command-label",
-    ),
+  currentCommandLabel: document.querySelector(
+    "#current-command-label",
+  ),
 
-  unitConditionLabel:
-    document.querySelector(
-      "#unit-condition-label",
-    ),
+  unitConditionLabel: document.querySelector(
+    "#unit-condition-label",
+  ),
 
-  commandOptions:
-    document.querySelector(
-      "#command-options",
-    ),
+  commandOptions: document.querySelector(
+    "#command-options",
+  ),
 
-  settingsDialog:
-    document.querySelector(
-      "#settings-dialog",
-    ),
+  settingsDialog: document.querySelector(
+    "#settings-dialog",
+  ),
 
-  projectInfoDialog:
-    document.querySelector(
-      "#project-info-dialog",
-    ),
+  projectInfoDialog: document.querySelector(
+    "#project-info-dialog",
+  ),
 
-  difficultySelect:
-    document.querySelector(
-      "#difficulty-select",
-    ),
+  difficultySelect: document.querySelector(
+    "#difficulty-select",
+  ),
 
-  developerModeToggle:
-    document.querySelector(
-      "#developer-mode-toggle",
-    ),
+  developerModeToggle: document.querySelector(
+    "#developer-mode-toggle",
+  ),
 
-  canvas:
-    document.querySelector(
-      "#battle-map",
-    ),
+  canvas: document.querySelector(
+    "#battle-map",
+  ),
 
-  mapMessage:
-    document.querySelector(
-      "#map-message",
-    ),
+  mapMessage: document.querySelector(
+    "#map-message",
+  ),
 };
 
 if (
   !elements.canvas ||
-  !elements.commandOptions
+  !elements.commandOptions ||
+  !elements.menuScreen ||
+  !elements.battleScreen ||
+  !elements.turnLabel ||
+  !elements.mapMessage
 ) {
   throw new Error(
     "ATS 필수 UI 요소를 찾을 수 없습니다.",
   );
 }
 
-const state = {
-  runtimeScenario: null,
-  terrain: new Map(),
+const state = createGameState({
+  createFogState,
+  createEffectState,
+});
 
-  turn: 1,
-  activeScreen: "menu",
-  activeCategory: null,
+const mapRenderer = createMapRenderer({
+  canvas: elements.canvas,
+  terrainTypes: TERRAIN_TYPES,
+  hexRadius: HEX_RADIUS,
+});
 
-  playerUnitId: null,
-  selectedUnitId: null,
-  selectedCommand: null,
-  selectedHex: null,
-
-  difficulty: "standard",
-  developerMode: false,
-
-  fog: createFogState(),
-  effects: createEffectState(),
-
-  camera: {
-    x: 0,
-    y: 0,
-    zoom: 1,
-    dragging: false,
-    pointerId: null,
-    lastX: 0,
-    lastY: 0,
-    downX: 0,
-    downY: 0,
-    moved: false,
-  },
-};
-
-const mapRenderer =
-  createMapRenderer({
-    canvas: elements.canvas,
-    terrainTypes:
-      TERRAIN_TYPES,
-    hexRadius: HEX_RADIUS,
-  });
-
-let commandPanel;
-let firePanel;
+let commandPanel = null;
+let firePanel = null;
+let commandController = null;
+let scenarioController = null;
+let turnController = null;
+let mapInputController = null;
 
 function getUnits() {
-  return (
-    state.runtimeScenario
-      ?.units ??
-    []
-  );
+  return state.runtimeScenario?.units ?? [];
 }
 
 function getPlayerTank() {
@@ -302,15 +291,13 @@ function getPlayerTank() {
     return null;
   }
 
-  const playerUnit =
-    getPlayerUnit(
-      state.runtimeScenario,
-    );
+  const playerUnit = getPlayerUnit(
+    state.runtimeScenario,
+  );
 
   if (
     !playerUnit ||
-    playerUnit.id !==
-      state.playerUnitId
+    playerUnit.id !== state.playerUnitId
   ) {
     return null;
   }
@@ -325,16 +312,14 @@ function getSelectedUnit() {
 function isUnitMoving(unit) {
   return (
     Boolean(unit?.destination) &&
-    Array.isArray(
-      unit.plannedPath,
-    ) &&
+    Array.isArray(unit.plannedPath) &&
     unit.plannedPath.length > 0
   );
 }
 
 function setMessage(message) {
   elements.mapMessage.textContent =
-    message;
+    message ?? "";
 }
 
 function getHealthSummary(unit) {
@@ -354,13 +339,10 @@ function getHealthSummary(unit) {
 }
 
 function getTurretSummary(unit) {
-  const status =
-    getTurretStatus(unit);
+  const status = getTurretStatus(unit);
 
   if (!status) {
-    return getHealthSummary(
-      unit,
-    );
+    return getHealthSummary(unit);
   }
 
   const modes = {
@@ -369,42 +351,36 @@ function getTurretSummary(unit) {
     manual: "수동구동",
   };
 
-  const stabilizer =
-    status.stabilizerAvailable
-      ? "안정화 정상"
-      : status
-          .stabilizerOperational
-        ? "안정화 미사용"
-        : "안정화 고장";
+  const stabilizer = status.stabilizerAvailable
+    ? "안정화 정상"
+    : status.stabilizerOperational
+      ? "안정화 미사용"
+      : "안정화 고장";
 
-  const position =
-    status.lockedToHull
-      ? status.aligned
-        ? "주포 정위치"
-        : "정위치 중"
-      : status.aligned
-        ? "포탑 정렬"
-        : "포탑 회전 중";
+  const position = status.lockedToHull
+    ? status.aligned
+      ? "주포 정위치"
+      : "정위치 중"
+    : status.aligned
+      ? "포탑 정렬"
+      : "포탑 회전 중";
 
   return (
     `${getHealthSummary(unit)} / ` +
-    `${modes[status.mode]} / ` +
+    `${modes[status.mode] ?? status.mode} / ` +
     `${stabilizer} / ` +
     position
   );
 }
 
 function updateSummary() {
-  const unit =
-    getSelectedUnit();
+  const unit = getSelectedUnit();
 
   elements.selectedUnitLabel.textContent =
-    unit?.name ??
-    "자차 없음";
+    unit?.name ?? "자차 없음";
 
   elements.currentCommandLabel.textContent =
-    unit?.command ??
-    "대기";
+    unit?.command ?? "대기";
 
   elements.unitConditionLabel.textContent =
     unit
@@ -412,28 +388,29 @@ function updateSummary() {
       : "-";
 }
 
-function getNeighbors(
-  column,
-  row,
-) {
-  const offsets =
-    row % 2 === 0
-      ? [
-          [-1, 0],
-          [1, 0],
-          [-1, -1],
-          [0, -1],
-          [-1, 1],
-          [0, 1],
-        ]
-      : [
-          [-1, 0],
-          [1, 0],
-          [0, -1],
-          [1, -1],
-          [0, 1],
-          [1, 1],
-        ];
+function updateTurnLabel(turn) {
+  elements.turnLabel.textContent =
+    `TURN ${turn}`;
+}
+
+function getNeighbors(column, row) {
+  const offsets = row % 2 === 0
+    ? [
+        [-1, 0],
+        [1, 0],
+        [-1, -1],
+        [0, -1],
+        [-1, 1],
+        [0, 1],
+      ]
+    : [
+        [-1, 0],
+        [1, 0],
+        [0, -1],
+        [1, -1],
+        [0, 1],
+        [1, 1],
+      ];
 
   return offsets.map(
     ([
@@ -441,24 +418,18 @@ function getNeighbors(
       rowOffset,
     ]) => ({
       column:
-        column +
-        columnOffset,
+        column + columnOffset,
 
       row:
-        row +
-        rowOffset,
+        row + rowOffset,
     }),
   );
 }
 
-function getMovementCost(
-  column,
-  row,
-) {
-  const terrain =
-    state.terrain.get(
-      `${column},${row}`,
-    );
+function getMovementCost(column, row) {
+  const terrain = state.terrain.get(
+    `${column},${row}`,
+  );
 
   return terrain
     ? TERRAIN_TYPES[
@@ -467,200 +438,9 @@ function getMovementCost(
     : Infinity;
 }
 
-function randomizeUnitPositions() {
-  const available =
-    getAvailablePlacementHexes(
-      state.terrain,
-      TERRAIN_TYPES,
-    );
-
-  const occupied =
-    new Set();
-
-  const friendlies =
-    getUnits().filter(
-      (unit) =>
-        unit.side ===
-        "friendly",
-    );
-
-  const enemies =
-    getUnits().filter(
-      (unit) =>
-        unit.side ===
-        "enemy",
-    );
-
-  function chooseHex(
-    validator = () => true,
-  ) {
-    const candidates =
-      available.filter(
-        (hex) =>
-          !occupied.has(
-            `${hex.column},${hex.row}`,
-          ) &&
-          validator(hex),
-      );
-
-    const selected =
-      candidates[
-        Math.floor(
-          Math.random() *
-            candidates.length,
-        )
-      ];
-
-    if (!selected) {
-      throw new Error(
-        "객체 랜덤 배치에 실패했습니다.",
-      );
-    }
-
-    occupied.add(
-      `${selected.column},${selected.row}`,
-    );
-
-    return selected;
-  }
-
-  friendlies.forEach((unit) => {
-    Object.assign(
-      unit,
-      chooseHex(),
-    );
-  });
-
-  enemies.forEach((unit) => {
-    Object.assign(
-      unit,
-      chooseHex(
-        (hex) =>
-          friendlies.every(
-            (friendly) =>
-              getHexDistance(
-                hex,
-                friendly,
-              ) >= 8,
-          ),
-      ),
-    );
-
-    unit.detectionStage =
-      DETECTION_STAGES.HIDDEN;
-
-    unit.visible = false;
-    unit.detected = false;
-    unit.identified = false;
-    unit.lastKnownPosition =
-      null;
-  });
-}
-
-function initializeScenario(
-  restart = false,
-) {
-  state.terrain =
-    generateTerrain({
-      columns: MAP_COLUMNS,
-      rows: MAP_ROWS,
-    });
-
-  state.runtimeScenario =
-    restart &&
-    state.runtimeScenario
-      ? restartScenario(
-          state.runtimeScenario,
-        )
-      : loadScenario();
-
-  state.runtimeScenario.smokeAreas =
-    [];
-
-  randomizeUnitPositions();
-
-  ensureUnitHexesPassable(
-    state.terrain,
-    getUnits(),
-  );
-
-  state.turn = 1;
-  state.runtimeScenario.turn = 1;
-
-  const playerUnit =
-    getPlayerUnit(
-      state.runtimeScenario,
-    );
-
-  state.playerUnitId =
-    playerUnit?.id ??
-    null;
-
-  state.selectedUnitId =
-    state.playerUnitId;
-
-  state.selectedCommand =
-    null;
-
-  state.selectedHex =
-    null;
-
-  resetFog(state.fog);
-  clearEffects(state.effects);
-
-  updateDetection(
-    state.runtimeScenario,
-    state.turn,
-  );
-
-  updateFog(
-    state.fog,
-    state.terrain,
-    getUnits(),
-  );
-
-  mapRenderer.invalidateTerrain();
-  mapRenderer.invalidateFog();
-
-  elements.turnLabel.textContent =
-    "TURN 1";
-
-  updateSummary();
-}
-
-function centerCamera() {
-  const unit =
-    getSelectedUnit();
-
-  if (!unit) {
-    return;
-  }
-
-  const viewport =
-    mapRenderer.getViewportSize();
-
-  const point =
-    hexToWorld(
-      unit.column,
-      unit.row,
-      HEX_RADIUS,
-    );
-
-  state.camera.x =
-    viewport.width / 2 -
-    point.x *
-      state.camera.zoom;
-
-  state.camera.y =
-    viewport.height / 2 -
-    point.y *
-      state.camera.zoom;
-}
-
 function drawTargetPreview({
   context,
-  hexToWorld:
-    convertHex,
+  hexToWorld: convertHex,
 }) {
   if (
     !state.selectedHex ||
@@ -671,17 +451,14 @@ function drawTargetPreview({
     return;
   }
 
-  const point =
-    convertHex(
-      state.selectedHex.column,
-      state.selectedHex.row,
-    );
+  const point = convertHex(
+    state.selectedHex.column,
+    state.selectedHex.row,
+  );
 
   context.save();
 
-  context.strokeStyle =
-    "#ffd078";
-
+  context.strokeStyle = "#ffd078";
   context.fillStyle =
     "rgba(255, 208, 120, 0.18)";
 
@@ -702,96 +479,6 @@ function drawTargetPreview({
   context.restore();
 }
 
-function drawSmokeAreas({
-  context,
-  hexToWorld:
-    convertHex,
-  bounds,
-  isPointVisible,
-}) {
-  const smokeAreas =
-    state.runtimeScenario
-      ?.smokeAreas ??
-    [];
-
-  smokeAreas.forEach(
-    (area) => {
-      const point =
-        convertHex(
-          area.column,
-          area.row,
-        );
-
-      if (
-        !isPointVisible(
-          point,
-          bounds,
-        )
-      ) {
-        return;
-      }
-
-      context.save();
-
-      context.fillStyle =
-        "rgba(170, 181, 175, 0.42)";
-
-      context.strokeStyle =
-        "rgba(218, 225, 220, 0.5)";
-
-      context.lineWidth = 2;
-
-      for (
-        let index = 0;
-        index < 7;
-        index += 1
-      ) {
-        const angle =
-          index *
-          (
-            Math.PI * 2 / 7
-          );
-
-        const distance =
-          index === 0
-            ? 0
-            : HEX_RADIUS * 0.7;
-
-        context.beginPath();
-
-        context.arc(
-          point.x +
-            Math.cos(angle) *
-              distance,
-
-          point.y +
-            Math.sin(angle) *
-              distance,
-
-          HEX_RADIUS * 0.7,
-          0,
-          Math.PI * 2,
-        );
-
-        context.fill();
-      }
-
-      context.beginPath();
-
-      context.arc(
-        point.x,
-        point.y,
-        HEX_RADIUS * 1.5,
-        0,
-        Math.PI * 2,
-      );
-
-      context.stroke();
-      context.restore();
-    },
-  );
-}
-
 function render(
   now = performance.now(),
 ) {
@@ -799,53 +486,48 @@ function render(
     terrain: state.terrain,
     camera: state.camera,
     fog: state.fog,
-
     developerMode:
       state.developerMode,
-
     drawFogLayer,
-
     now,
 
-    drawDynamicLayer:
-      (renderer) => {
-        drawSmokeAreas(
-          renderer,
-        );
+    drawDynamicLayer(renderer) {
+      drawSmokeAreas({
+        ...renderer,
+        smokeAreas:
+          state.runtimeScenario
+            ?.smokeAreas ?? [],
+        hexRadius: HEX_RADIUS,
+      });
 
-        drawUnits({
-          ...renderer,
+      drawUnits({
+        ...renderer,
+        units: getUnits(),
+        selectedUnitId:
+          state.selectedUnitId,
+        developerMode:
+          state.developerMode,
+      });
 
-          units: getUnits(),
+      drawTargetPreview(
+        renderer,
+      );
 
-          selectedUnitId:
-            state.selectedUnitId,
-
-          developerMode:
-            state.developerMode,
-        });
-
-        drawTargetPreview(
-          renderer,
-        );
-
-        drawEffects({
-          ...renderer,
-
-          effectState:
-            state.effects,
-        });
-      },
+      drawEffects({
+        ...renderer,
+        effectState:
+          state.effects,
+      });
+    },
   });
 }
 
 function refreshFogAndRender() {
-  const changed =
-    updateFog(
-      state.fog,
-      state.terrain,
-      getUnits(),
-    );
+  const changed = updateFog(
+    state.fog,
+    state.terrain,
+    getUnits(),
+  );
 
   if (changed) {
     mapRenderer.invalidateFog();
@@ -860,126 +542,6 @@ function refreshFogAndRender() {
   render();
 }
 
-function calculateDirection(
-  from,
-  to,
-) {
-  const start =
-    hexToWorld(
-      from.column,
-      from.row,
-      HEX_RADIUS,
-    );
-
-  const end =
-    hexToWorld(
-      to.column,
-      to.row,
-      HEX_RADIUS,
-    );
-
-  return Math.atan2(
-    end.y - start.y,
-    end.x - start.x,
-  );
-}
-
-function handleMovementTarget(
-  unit,
-  command,
-  hex,
-) {
-  if (unit.destroyed) {
-    setMessage(
-      "격파된 전차는 이동할 수 없습니다.",
-    );
-
-    return;
-  }
-
-  const result =
-    planUnitMovement({
-      unit,
-      destination: hex,
-      getNeighbors,
-      getMovementCost,
-    });
-
-  if (!result.success) {
-    setMessage(
-      result.reason,
-    );
-
-    return;
-  }
-
-  setPersistentAction(
-    unit,
-    {
-      type:
-        UNIT_ACTIONS.MOVE,
-
-      targetHex: hex,
-      label: command.label,
-    },
-    state.turn,
-  );
-
-  setMessage(
-    `${command.label}: ${unit.plannedPath.length}개 헥스 이동로 설정`,
-  );
-}
-
-function handleObservationTarget(
-  unit,
-  command,
-  hex,
-) {
-  const direction =
-    calculateDirection(
-      unit,
-      hex,
-    );
-
-  if (
-    typeof command.onTarget ===
-    "function"
-  ) {
-    command.onTarget({
-      unit,
-      hex,
-      direction,
-      turn: state.turn,
-    });
-
-    return;
-  }
-
-  setPersistentAction(
-    unit,
-    {
-      type:
-        UNIT_ACTIONS.OBSERVE,
-
-      targetHex: hex,
-      direction,
-
-      crewRole:
-        command.crewRole ??
-        null,
-
-      label:
-        command.label ??
-        "감시",
-    },
-    state.turn,
-  );
-
-  setMessage(
-    `${command.label ?? "감시"} 방향 지정: ${hex.column}, ${hex.row}`,
-  );
-}
-
 function startEffectLoop() {
   startEffectAnimation(
     state.effects,
@@ -987,742 +549,213 @@ function startEffectLoop() {
   );
 }
 
-function handleReconByFireTarget(
-  unit,
-  hex,
-) {
-  const hiddenBefore =
-    new Set(
-      getUnits()
-        .filter(
-          (enemy) =>
-            enemy.side ===
-              "enemy" &&
-            !enemy.visible,
-        )
-        .map(
-          (enemy) =>
-            enemy.id,
-        ),
-    );
+commandPanel = createCommandPanel({
+  container:
+    elements.commandOptions,
 
-  const affected =
-    applyReconByFire(
-      state.runtimeScenario,
-      unit,
-      hex,
-      state.turn,
-    );
+  getSelectedUnit,
 
-  addFireEffect(
-    state.effects,
-    unit,
-    hex,
-    AMMUNITION_TYPES.HEAT,
-    {
-      reconByFire: true,
-    },
-  );
+  getRuntimeScenario:
+    () => state.runtimeScenario,
 
-  updateDetection(
-    state.runtimeScenario,
-    state.turn,
-  );
+  getTurn:
+    () => state.turn,
 
-  affected.forEach((enemy) => {
-    if (
-      hiddenBefore.has(
-        enemy.id,
-      ) &&
-      enemy.visible
-    ) {
-      addContactEffect(
-        state.effects,
-        enemy,
+  onCommandSelected(
+    command,
+    selectedButton,
+  ) {
+    commandController
+      ?.handleCommandSelection(
+        command,
+        selectedButton,
       );
-    }
+  },
+
+  onStateChanged:
+    refreshFogAndRender,
+
+  onMessage:
+    setMessage,
+
+  onCancelMovement:
+    cancelUnitMovement,
+});
+
+firePanel = createFirePanel({
+  container:
+    elements.commandOptions,
+
+  getSelectedUnit,
+
+  getRuntimeScenario:
+    () => state.runtimeScenario,
+
+  getTurn:
+    () => state.turn,
+
+  isUnitMoving,
+
+  onBeginTargetSelection() {
+    commandController
+      ?.beginFireTargetSelection();
+  },
+
+  onFireEffect(
+    unit,
+    target,
+    ammunition,
+  ) {
+    addFireEffect(
+      state.effects,
+      unit,
+      target,
+      ammunition,
+    );
+
+    startEffectLoop();
+  },
+
+  onRemoveFireEffects(unitId) {
+    removeUnitFireEffects(
+      state.effects,
+      unitId,
+    );
+  },
+
+  onStateChanged() {
+    updateSummary();
+    render();
+  },
+
+  onMessage:
+    setMessage,
+});
+
+commandController =
+  createCommandController({
+    state,
+
+    commandOptions:
+      elements.commandOptions,
+
+    getSelectedUnit,
+    commandPanel,
+    firePanel,
+    setMessage,
+    refreshFogAndRender,
+    updateSummary,
+    render,
   });
 
-  setMessage(
-    `화력수색 시작: ${hex.column}, ${hex.row}`,
-  );
-
-  startEffectLoop();
-}
-
-function handleHunterKillerTarget(
-  unit,
-  hex,
-) {
-  const target =
-    getUnits().find(
-      (candidate) =>
-        candidate.side ===
-          "enemy" &&
-        !candidate.destroyed &&
-        candidate.column ===
-          hex.column &&
-        candidate.row ===
-          hex.row &&
-        isUnitVisible(
-          candidate,
-          state.developerMode,
-        ),
-    );
-
-  if (!target) {
-    setMessage(
-      "헌터킬러로 지정할 탐지 표적이 없습니다.",
-    );
-
-    return;
-  }
-
-  if (
-    typeof state.selectedCommand
-      ?.onTarget === "function"
-  ) {
-    state.selectedCommand.onTarget({
-      unit,
-      targetUnit: target,
-      hex,
-      turn: state.turn,
-    });
-
-    return;
-  }
-
-  setMessage(
-    "헌터킬러 표적 지정 기능이 연결되지 않았습니다.",
-  );
-}
-
-function handleHexSelection(hex) {
-  if (
-    !hex ||
-    !Number.isFinite(
-      hex.column,
-    ) ||
-    !Number.isFinite(
-      hex.row,
-    )
-  ) {
-    return;
-  }
-
-  const unit =
-    getSelectedUnit();
-
-  state.selectedHex = {
-    column: hex.column,
-    row: hex.row,
-  };
-
-  if (!unit) {
-    render();
-    return;
-  }
-
-  if (unit.destroyed) {
-    state.selectedCommand =
-      null;
-
-    setMessage(
-      "자차가 격파되어 명령을 실행할 수 없습니다.",
-    );
-
-    updateSummary();
-    render();
-
-    return;
-  }
-
-  const command =
-    state.selectedCommand;
-
-  if (
-    MOVEMENT_COMMANDS.has(
-      command?.id,
-    )
-  ) {
-    handleMovementTarget(
-      unit,
-      command,
-      state.selectedHex,
-    );
-  } else if (
-    command?.id ===
-      "observation" ||
-    command?.id ===
-      "crew-observation" ||
-    command?.id ===
-      "commander-sight"
-  ) {
-    handleObservationTarget(
-      unit,
-      command,
-      state.selectedHex,
-    );
-  } else if (
-    command?.id ===
-    "hunter-killer"
-  ) {
-    handleHunterKillerTarget(
-      unit,
-      state.selectedHex,
-    );
-  } else if (
-    command?.id ===
-    "recon-by-fire"
-  ) {
-    handleReconByFireTarget(
-      unit,
-      state.selectedHex,
-    );
-  } else if (
-    command?.id ===
-    "fire-target"
-  ) {
-    const enemy =
-      getUnits().find(
-        (candidate) =>
-          candidate.side ===
-            "enemy" &&
-          !candidate.destroyed &&
-          candidate.column ===
-            state.selectedHex
-              .column &&
-          candidate.row ===
-            state.selectedHex
-              .row &&
-          isUnitVisible(
-            candidate,
-            state.developerMode,
-          ),
-      );
-
-    firePanel.setTarget(
-      state.selectedHex,
-      enemy?.id ??
-        null,
-    );
-  } else {
-    const terrain =
-      state.terrain.get(
-        `${state.selectedHex.column},${state.selectedHex.row}`,
-      );
-
-    if (!terrain) {
-      render();
-      return;
-    }
-
-    const type =
-      TERRAIN_TYPES[
-        terrain.type
-      ];
-
-    setMessage(
-      `${type.name} | 고도 ${terrain.elevation}m | 은폐 ${type.concealment}% | 엄폐 ${type.cover}%`,
-    );
-  }
-
-  state.selectedCommand =
-    null;
-
-  refreshFogAndRender();
-
-  if (
-    state.activeCategory ===
-      "fire" ||
-    state.activeCategory ===
-      "combat"
-  ) {
-    firePanel.render();
-  }
-}
-
-function worldToHex(
-  worldX,
-  worldY,
-) {
-  let nearest = null;
-  let distance = Infinity;
-
-  state.terrain.forEach((hex) => {
-    const point =
-      hexToWorld(
-        hex.column,
-        hex.row,
-        HEX_RADIUS,
-      );
-
-    const current =
-      Math.hypot(
-        worldX - point.x,
-        worldY - point.y,
-      );
-
-    if (current < distance) {
-      distance = current;
-      nearest = hex;
-    }
+scenarioController =
+  createScenarioController({
+    state,
+    mapRenderer,
+    terrainTypes:
+      TERRAIN_TYPES,
+    detectionStages:
+      DETECTION_STAGES,
+    mapColumns:
+      MAP_COLUMNS,
+    mapRows:
+      MAP_ROWS,
+    hexRadius:
+      HEX_RADIUS,
+    loadScenario,
+    restartScenario,
+    getPlayerUnit,
+    getHexDistance,
+    generateTerrain,
+    getAvailablePlacementHexes,
+    ensureUnitHexesPassable,
+    resetFog,
+    clearEffects,
+    updateDetection,
+    updateFog,
+    hexToWorld,
+    updateSummary,
+    turnLabel:
+      elements.turnLabel,
   });
 
-  return distance <=
-    HEX_RADIUS
-    ? nearest
-    : null;
-}
+mapInputController =
+  createMapInputController({
+    state,
+    canvas:
+      elements.canvas,
+    mapRenderer,
+    terrainTypes:
+      TERRAIN_TYPES,
+    movementCommands:
+      MOVEMENT_COMMANDS,
+    unitActions:
+      UNIT_ACTIONS,
+    ammunitionTypes:
+      AMMUNITION_TYPES,
+    hexRadius:
+      HEX_RADIUS,
+    hexToWorld,
+    getSelectedUnit,
+    getHealthSummary,
+    getNeighbors,
+    getMovementCost,
+    planUnitMovement,
+    setPersistentAction,
+    applyReconByFire,
+    isUnitVisible,
+    updateDetection,
+    updateFog,
+    addFireEffect,
+    addContactEffect,
+    firePanel,
+    setMessage,
+    updateSummary,
+    render,
+    startEffectLoop,
+  });
 
-function getTappedUnit(
-  worldX,
-  worldY,
-) {
-  return getUnits().find(
-    (unit) => {
-      if (
-        unit.destroyed ||
-        !isUnitVisible(
-          unit,
-          state.developerMode,
-        )
-      ) {
-        return false;
-      }
+turnController =
+  createTurnController({
+    state,
+    mapRenderer,
+    hexRadius:
+      HEX_RADIUS,
+    ammunitionTypes:
+      AMMUNITION_TYPES,
+    unitActions:
+      UNIT_ACTIONS,
+    hunterKillerStates:
+      HUNTER_KILLER_STATES,
+    hexToWorld,
+    advanceUnitMovement,
+    processPersistentActions,
+    updateFireProcedure,
+    beginReloading,
+    registerAdjustedShot,
+    acceptHunterKillerTarget,
+    removeExpiredSmokeAreas,
+    updateDetection,
+    updateFog,
+    addFireEffect,
+    addContactEffect,
+    getPlayerUnit,
+    setMessage,
+    updateSummary,
+    updateTurnLabel,
 
-      const point =
-        hexToWorld(
-          unit.column,
-          unit.row,
-          HEX_RADIUS,
-        );
-
-      return (
-        Math.hypot(
-          worldX - point.x,
-          worldY - point.y,
-        ) <= 30
+    refreshCommandPanel(category) {
+      commandPanel.refresh(
+        category,
       );
     },
-  );
-}
 
-function handleMapTap(
-  clientX,
-  clientY,
-) {
-  const rectangle =
-    elements.canvas
-      .getBoundingClientRect();
+    refreshFirePanel() {
+      firePanel.render();
+    },
 
-  const world = {
-    x:
-      (
-        clientX -
-        rectangle.left -
-        state.camera.x
-      ) /
-      state.camera.zoom,
-
-    y:
-      (
-        clientY -
-        rectangle.top -
-        state.camera.y
-      ) /
-      state.camera.zoom,
-  };
-
-  const tappedUnit =
-    getTappedUnit(
-      world.x,
-      world.y,
-    );
-
-  const tappedHex =
-    tappedUnit
-      ? {
-          column:
-            tappedUnit.column,
-
-          row:
-            tappedUnit.row,
-        }
-      : worldToHex(
-          world.x,
-          world.y,
-        );
-
-  if (
-    state.selectedCommand
-      ?.needsTarget
-  ) {
-    if (tappedHex) {
-      handleHexSelection(
-        tappedHex,
-      );
-    }
-
-    return;
-  }
-
-  if (tappedUnit) {
-    const playerUnit =
-      getSelectedUnit();
-
-    if (
-      tappedUnit.id ===
-      playerUnit?.id
-    ) {
-      setMessage(
-        `${playerUnit.name} / ${getHealthSummary(playerUnit)}`,
-      );
-    } else if (
-      tappedUnit.side ===
-      "enemy"
-    ) {
-      setMessage(
-        tappedUnit.identified
-          ? `${tappedUnit.name ?? tappedUnit.id} 접촉`
-          : "미확인 적 접촉",
-      );
-    } else {
-      setMessage(
-        `${tappedUnit.name ?? tappedUnit.id} 위치`,
-      );
-    }
-
-    updateSummary();
-    render();
-
-    return;
-  }
-
-  if (tappedHex) {
-    handleHexSelection(
-      tappedHex,
-    );
-  }
-}
-
-function formatShotResult(
-  result,
-) {
-  if (!result) {
-    return "발사";
-  }
-
-  if (result.smokeCreated) {
-    return "연막 형성";
-  }
-
-  if (!result.hit) {
-    return result.reason;
-  }
-
-  if (result.destroyed) {
-    return (
-      `명중 / 피해 ${result.damage} / 격파`
-    );
-  }
-
-  return (
-    `명중 / 피해 ${result.damage}` +
-    (
-      result.remainingHealth !==
-        null &&
-      result.remainingHealth !==
-        undefined
-        ? ` / 잔여 체력 ${result.remainingHealth}`
-        : ""
-    )
-  );
-}
-
-function addAdjustedShotFeedback(
-  adjustedShot,
-) {
-  const {
-    unit,
-    result,
-  } = adjustedShot;
-
-  const targetHex =
-    unit.fireControl
-      ?.targetHex;
-
-  if (!targetHex) {
-    return;
-  }
-
-  addFireEffect(
-    state.effects,
-    unit,
-    targetHex,
-    unit.fireControl.ammunition,
-  );
-
-  setMessage(
-    `쏴-수정: ${formatShotResult(result.shotResult)}`,
-  );
-}
-
-function executeTurn() {
-  const playerUnit =
-    getSelectedUnit();
-
-  if (
-    !playerUnit ||
-    playerUnit.destroyed
-  ) {
-    setMessage(
-      "자차가 격파되어 턴을 실행할 수 없습니다.",
-    );
-
-    return;
-  }
-
-  const hiddenBefore =
-    new Set(
-      getUnits()
-        .filter(
-          (enemy) =>
-            enemy.side ===
-              "enemy" &&
-            !enemy.visible &&
-            !enemy.destroyed,
-        )
-        .map(
-          (enemy) =>
-            enemy.id,
-        ),
-    );
-
-  const movingUnitIds =
-    new Set();
-
-  getUnits()
-    .filter(
-      (unit) =>
-        unit.side ===
-          "friendly" &&
-        !unit.destroyed,
-    )
-    .forEach((unit) => {
-      const result =
-        advanceUnitMovement({
-          unit,
-          turn: state.turn,
-
-          hexToWorld:
-            (column, row) =>
-              hexToWorld(
-                column,
-                row,
-                HEX_RADIUS,
-              ),
-        });
-
-      if (result.moved) {
-        movingUnitIds.add(
-          unit.id,
-        );
-      }
-    });
-
-  const actionResult =
-    processPersistentActions(
-      state.runtimeScenario,
-      state.turn,
-      {
-        movingUnitIds,
-
-        hunterKillerStates:
-          HUNTER_KILLER_STATES,
-
-        updateFireProcedure,
-        beginReloading,
-        registerAdjustedShot,
-        acceptHunterKillerTarget,
-      },
-    );
-
-  getUnits()
-    .filter(
-      (unit) =>
-        unit.side ===
-          "friendly" &&
-        !unit.destroyed &&
-        unit.action?.type ===
-          UNIT_ACTIONS.RECON_BY_FIRE &&
-        unit.action.targetHex,
-    )
-    .forEach((unit) => {
-      addFireEffect(
-        state.effects,
-        unit,
-        unit.action.targetHex,
-        AMMUNITION_TYPES.HEAT,
-        {
-          reconByFire: true,
-        },
-      );
-    });
-
-  actionResult.adjustedShots
-    .forEach(
-      addAdjustedShotFeedback,
-    );
-
-  state.turn += 1;
-  state.runtimeScenario.turn =
-    state.turn;
-
-  removeExpiredSmokeAreas(
-    state.runtimeScenario,
-    state.turn,
-  );
-
-  updateDetection(
-    state.runtimeScenario,
-    state.turn,
-  );
-
-  getUnits()
-    .filter(
-      (enemy) =>
-        enemy.side ===
-          "enemy" &&
-        !enemy.destroyed &&
-        enemy.visible &&
-        hiddenBefore.has(
-          enemy.id,
-        ),
-    )
-    .forEach((enemy) =>
-      addContactEffect(
-        state.effects,
-        enemy,
-      ),
-    );
-
-  const fogChanged =
-    updateFog(
-      state.fog,
-      state.terrain,
-      getUnits(),
-    );
-
-  if (fogChanged) {
-    mapRenderer.invalidateFog();
-  }
-
-  elements.turnLabel.textContent =
-    `TURN ${state.turn}`;
-
-  state.selectedCommand =
-    null;
-
-  updateSummary();
-
-  if (
-    state.activeCategory ===
-      "fire" ||
-    state.activeCategory ===
-      "combat"
-  ) {
-    firePanel.render();
-  } else if (
-    state.activeCategory
-  ) {
-    commandPanel.refresh(
-      state.activeCategory,
-    );
-  }
-
-  if (
-    actionResult.adjustedShots
-      .length === 0
-  ) {
-    setMessage(
-      `TURN ${state.turn - 1} 처리 완료`,
-    );
-  }
-
-  startEffectLoop();
-}
-
-function handleCommandSelection(
-  command,
-  selectedButton,
-) {
-  const unit =
-    getSelectedUnit();
-
-  if (!unit) {
-    return;
-  }
-
-  if (unit.destroyed) {
-    setMessage(
-      "격파된 전차는 명령을 수행할 수 없습니다.",
-    );
-
-    return;
-  }
-
-  if (
-    command.id === "recon"
-  ) {
-    commandPanel.activateRecon();
-    refreshFogAndRender();
-    return;
-  }
-
-  if (
-    typeof command.execute ===
-    "function" &&
-    !command.needsTarget
-  ) {
-    command.execute({
-      unit,
-      turn: state.turn,
-    });
-
-    updateSummary();
-    render();
-
-    return;
-  }
-
-  state.selectedCommand =
-    command;
-
-  elements.commandOptions
-    .querySelectorAll(
-      ".command-option",
-    )
-    .forEach((button) => {
-      button.classList.toggle(
-        "is-selected",
-        button ===
-          selectedButton,
-      );
-    });
-
-  if (command.needsTarget) {
-    setMessage(
-      `${command.label}: 지도에서 목표 헥스를 선택하세요.`,
-    );
-  } else {
-    unit.command =
-      command.label;
-
-    updateSummary();
-    render();
-  }
-}
+    startEffectLoop,
+  });
 
 function showScreen(name) {
   const menu =
@@ -1740,7 +773,7 @@ function showScreen(name) {
   if (!menu) {
     requestAnimationFrame(() => {
       mapRenderer.resize();
-      centerCamera();
+      scenarioController.centerCamera();
       render();
     });
   }
@@ -1751,166 +784,94 @@ function handleAction(action) {
     action === "open-battle"
   ) {
     showScreen("battle");
-  } else if (
+    return;
+  }
+
+  if (
     action === "return-menu"
   ) {
     showScreen("menu");
-  } else if (
-    action ===
-    "restart-scenario"
+    return;
+  }
+
+  if (
+    action === "restart-scenario"
   ) {
-    initializeScenario(true);
-    centerCamera();
+    scenarioController
+      .restartScenario();
+
+    scenarioController
+      .centerCamera();
+
     render();
 
     setMessage(
       "시나리오를 다시 시작했습니다.",
     );
-  } else if (
-    action ===
-    "open-settings"
+
+    return;
+  }
+
+  if (
+    action === "open-settings"
   ) {
     elements.settingsDialog
-      .showModal();
-  } else if (
-    action ===
-    "open-project-info"
+      ?.showModal();
+
+    return;
+  }
+
+  if (
+    action === "open-project-info"
   ) {
     elements.projectInfoDialog
-      .showModal();
-  } else if (
-    action ===
-    "center-camera"
+      ?.showModal();
+
+    return;
+  }
+
+  if (
+    action === "center-camera"
   ) {
-    centerCamera();
+    scenarioController
+      .centerCamera();
+
     render();
-  } else if (
+
+    return;
+  }
+
+  if (
     action === "zoom-in" ||
     action === "zoom-out"
   ) {
-    state.camera.zoom =
-      Math.min(
-        1.8,
-        Math.max(
-          0.55,
-          state.camera.zoom +
-            (
-              action === "zoom-in"
-                ? 0.15
-                : -0.15
-            ),
-        ),
-      );
+    state.camera.zoom = Math.min(
+      1.8,
+      Math.max(
+        0.55,
+        state.camera.zoom +
+          (
+            action === "zoom-in"
+              ? 0.15
+              : -0.15
+          ),
+      ),
+    );
 
-    centerCamera();
+    scenarioController
+      .centerCamera();
+
     render();
-  } else if (
-    action ===
-    "execute-turn"
+
+    return;
+  }
+
+  if (
+    action === "execute-turn"
   ) {
-    executeTurn();
+    turnController.executeTurn();
   }
 }
-
-commandPanel =
-  createCommandPanel({
-    container:
-      elements.commandOptions,
-
-    getSelectedUnit,
-
-    getRuntimeScenario:
-      () =>
-        state.runtimeScenario,
-
-    getTurn:
-      () => state.turn,
-
-    onCommandSelected:
-      handleCommandSelection,
-
-    onStateChanged:
-      refreshFogAndRender,
-
-    onMessage:
-      setMessage,
-
-    onCancelMovement:
-      cancelUnitMovement,
-  });
-
-firePanel =
-  createFirePanel({
-    container:
-      elements.commandOptions,
-
-    getSelectedUnit,
-
-    getRuntimeScenario:
-      () =>
-        state.runtimeScenario,
-
-    getTurn:
-      () => state.turn,
-
-    isUnitMoving,
-
-    onBeginTargetSelection:
-      () => {
-        const unit =
-          getSelectedUnit();
-
-        if (
-          !unit ||
-          unit.destroyed
-        ) {
-          setMessage(
-            "사격 목표를 지정할 수 없습니다.",
-          );
-
-          return;
-        }
-
-        state.selectedCommand = {
-          id: "fire-target",
-          label: "표적 지정",
-          needsTarget: true,
-        };
-      },
-
-    onFireEffect:
-      (
-        unit,
-        target,
-        ammunition,
-      ) => {
-        addFireEffect(
-          state.effects,
-          unit,
-          target,
-          ammunition,
-        );
-
-        startEffectLoop();
-      },
-
-    onRemoveFireEffects:
-      (unitId) => {
-        removeUnitFireEffects(
-          state.effects,
-          unitId,
-        );
-      },
-
-    onStateChanged:
-      () => {
-        updateSummary();
-        render();
-      },
-
-    onMessage:
-      setMessage,
-  });
 
 bindApplicationEvents({
   canvas:
@@ -1931,74 +892,52 @@ bindApplicationEvents({
   onAction:
     handleAction,
 
-  onCommandCategory:
-    (category) => {
-      state.activeCategory =
-        category;
+  onCommandCategory(category) {
+    commandController
+      .selectCategory(category);
+  },
 
-      state.selectedCommand =
-        null;
+  onDifficultyChange(difficulty) {
+    state.difficulty =
+      difficulty;
+  },
 
-      document
-        .querySelectorAll(
-          ".command-category",
-        )
-        .forEach((button) => {
-          button.classList.toggle(
-            "is-active",
-            button.dataset
-              .commandCategory ===
-              category,
-          );
-        });
+  onDeveloperModeChange(enabled) {
+    state.developerMode =
+      enabled;
 
-      if (
-        category === "fire" ||
-        category === "combat"
-      ) {
-        firePanel.render();
-      } else {
-        commandPanel.render(
-          category,
-        );
-      }
-    },
+    mapRenderer
+      .invalidateTerrain();
 
-  onDifficultyChange:
-    (difficulty) => {
-      state.difficulty =
-        difficulty;
-    },
+    mapRenderer
+      .invalidateFog();
 
-  onDeveloperModeChange:
-    (enabled) => {
-      state.developerMode =
-        enabled;
+    render();
+  },
 
-      mapRenderer
-        .invalidateTerrain();
+  onMapTap(
+    clientX,
+    clientY,
+  ) {
+    mapInputController.handleMapTap(
+      clientX,
+      clientY,
+    );
+  },
 
-      mapRenderer
-        .invalidateFog();
+  onCameraMove() {
+    render();
+  },
 
-      render();
-    },
+  onResize() {
+    mapRenderer.resize();
 
-  onMapTap:
-    handleMapTap,
+    scenarioController
+      .centerCamera();
 
-  onCameraMove:
-    () => {
-      render();
-    },
-
-  onResize:
-    () => {
-      mapRenderer.resize();
-      centerCamera();
-      render();
-    },
+    render();
+  },
 });
 
-initializeScenario();
+scenarioController.startScenario();
 showScreen("menu");
