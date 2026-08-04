@@ -1,10 +1,9 @@
-// src/render/unitRenderer.js — 전체 교체, 예상 1~684행
+// src/render/unitRenderer.js — 전체 교체
 
 import { UNIT_ACTIONS } from "../engine/constants/actionConstants.js";
 
 import {
   CREW_ROLES,
-  HUNTER_KILLER_STATES,
 } from "../engine/runtime/runtimeConstants.js";
 
 import {
@@ -12,38 +11,91 @@ import {
   isUnitVisible,
 } from "../engine/detection.js";
 
+const DEFAULT_VISUAL_RANGE = 7;
+
 const CREW_OBSERVATION_STYLES = Object.freeze({
   [CREW_ROLES.COMMANDER]: {
     stroke: "rgba(255, 218, 128, 0.9)",
     fill: "rgba(255, 218, 128, 0.1)",
-    radiusFactor: 12,
   },
 
   [CREW_ROLES.GUNNER]: {
     stroke: "rgba(128, 194, 255, 0.9)",
     fill: "rgba(128, 194, 255, 0.1)",
-    radiusFactor: 10,
   },
 
   [CREW_ROLES.DRIVER]: {
     stroke: "rgba(153, 221, 161, 0.9)",
     fill: "rgba(153, 221, 161, 0.1)",
-    radiusFactor: 7,
   },
 
   [CREW_ROLES.LOADER]: {
     stroke: "rgba(211, 165, 255, 0.9)",
     fill: "rgba(211, 165, 255, 0.1)",
-    radiusFactor: 8,
   },
 });
 
-const CPS_VISIBLE_STATES = new Set([
-  HUNTER_KILLER_STATES.TARGET_FOUND,
-  HUNTER_KILLER_STATES.DESIGNATING,
-  HUNTER_KILLER_STATES.HANDOFF,
-  HUNTER_KILLER_STATES.TRACKING,
-]);
+function finiteOrDefault(value, fallback) {
+  return Number.isFinite(value)
+    ? value
+    : fallback;
+}
+
+function nonNegativeOrDefault(value, fallback) {
+  return Math.max(
+    0,
+    finiteOrDefault(value, fallback),
+  );
+}
+
+function getBaseVisualRange(unit) {
+  const visualRange =
+    unit.sensors?.visualRange;
+
+  if (
+    Number.isFinite(visualRange) &&
+    visualRange > 0
+  ) {
+    return visualRange;
+  }
+
+  if (
+    Number.isFinite(unit.detectionRange) &&
+    unit.detectionRange > 0
+  ) {
+    return unit.detectionRange;
+  }
+
+  const legacyRange =
+    unit.sensors?.directionalObservation;
+
+  if (
+    Number.isFinite(legacyRange) &&
+    legacyRange > 0
+  ) {
+    return legacyRange / 10;
+  }
+
+  return DEFAULT_VISUAL_RANGE;
+}
+
+function getObserverRadius(
+  unit,
+  observer,
+  hexRadius,
+) {
+  const rangeFactor =
+    nonNegativeOrDefault(
+      observer.range,
+      1,
+    );
+
+  return (
+    hexRadius *
+    getBaseVisualRange(unit) *
+    rangeFactor
+  );
+}
 
 function drawSelection(context, point) {
   context.beginPath();
@@ -56,22 +108,38 @@ function drawSelection(context, point) {
     Math.PI * 2,
   );
 
-  context.fillStyle = "rgba(198, 225, 181, 0.2)";
+  context.fillStyle =
+    "rgba(198, 225, 181, 0.2)";
+
   context.fill();
 
-  context.strokeStyle = "#c5dfb5";
+  context.strokeStyle =
+    "#c5dfb5";
+
   context.lineWidth = 2;
   context.stroke();
 }
 
-function drawTankIcon(context, unit, point) {
-  const destroyed = unit.destroyed === true;
+function drawTankIcon(
+  context,
+  unit,
+  point,
+) {
+  const destroyed =
+    unit.destroyed === true;
 
   context.save();
-  context.translate(point.x, point.y);
-  context.rotate(unit.hullDirection ?? 0);
+  context.translate(
+    point.x,
+    point.y,
+  );
 
-  context.globalAlpha = destroyed ? 0.55 : 1;
+  context.rotate(
+    unit.hullDirection ?? 0,
+  );
+
+  context.globalAlpha =
+    destroyed ? 0.55 : 1;
 
   context.fillStyle = destroyed
     ? "#333735"
@@ -85,8 +153,19 @@ function drawTankIcon(context, unit, point) {
 
   context.lineWidth = 1.5;
 
-  context.fillRect(-14, -8, 28, 16);
-  context.strokeRect(-14, -8, 28, 16);
+  context.fillRect(
+    -14,
+    -8,
+    28,
+    16,
+  );
+
+  context.strokeRect(
+    -14,
+    -8,
+    28,
+    16,
+  );
 
   context.beginPath();
   context.moveTo(-12, -11);
@@ -97,7 +176,10 @@ function drawTankIcon(context, unit, point) {
   context.restore();
 
   context.save();
-  context.translate(point.x, point.y);
+  context.translate(
+    point.x,
+    point.y,
+  );
 
   context.rotate(
     unit.turretDirection ??
@@ -105,7 +187,8 @@ function drawTankIcon(context, unit, point) {
       0,
   );
 
-  context.globalAlpha = destroyed ? 0.55 : 1;
+  context.globalAlpha =
+    destroyed ? 0.55 : 1;
 
   context.fillStyle = destroyed
     ? "#454947"
@@ -118,7 +201,15 @@ function drawTankIcon(context, unit, point) {
     : "#edf4ef";
 
   context.beginPath();
-  context.arc(0, 0, 6, 0, Math.PI * 2);
+
+  context.arc(
+    0,
+    0,
+    6,
+    0,
+    Math.PI * 2,
+  );
+
   context.fill();
   context.stroke();
 
@@ -126,31 +217,61 @@ function drawTankIcon(context, unit, point) {
   context.moveTo(4, 0);
   context.lineTo(21, 0);
   context.stroke();
-
   context.restore();
 }
 
-function drawObserverIcon(context, unit, point) {
+function drawObserverIcon(
+  context,
+  unit,
+  point,
+) {
   context.save();
-  context.translate(point.x, point.y);
+  context.translate(
+    point.x,
+    point.y,
+  );
 
-  context.globalAlpha = unit.destroyed ? 0.5 : 1;
+  context.globalAlpha =
+    unit.destroyed
+      ? 0.5
+      : 1;
 
-  context.fillStyle = unit.destroyed
-    ? "#373737"
-    : "#8c4f45";
+  context.fillStyle =
+    unit.destroyed
+      ? "#373737"
+      : "#8c4f45";
 
-  context.strokeStyle = unit.destroyed
-    ? "#989898"
-    : "#ffd2c4";
+  context.strokeStyle =
+    unit.destroyed
+      ? "#989898"
+      : "#ffd2c4";
 
   context.lineWidth = 2;
 
-  context.fillRect(-15, -11, 30, 22);
-  context.strokeRect(-15, -11, 30, 22);
+  context.fillRect(
+    -15,
+    -11,
+    30,
+    22,
+  );
+
+  context.strokeRect(
+    -15,
+    -11,
+    30,
+    22,
+  );
 
   context.beginPath();
-  context.arc(0, 0, 7, 0, Math.PI * 2);
+
+  context.arc(
+    0,
+    0,
+    7,
+    0,
+    Math.PI * 2,
+  );
+
   context.stroke();
 
   context.beginPath();
@@ -170,41 +291,79 @@ function drawObserverIcon(context, unit, point) {
   context.restore();
 }
 
-function drawAtgmIcon(context, unit, point) {
+function drawAtgmIcon(
+  context,
+  unit,
+  point,
+) {
   context.save();
 
-  context.globalAlpha = unit.destroyed ? 0.5 : 1;
+  context.globalAlpha =
+    unit.destroyed
+      ? 0.5
+      : 1;
 
-  context.fillStyle = unit.destroyed
-    ? "#373737"
-    : "#9d514e";
+  context.fillStyle =
+    unit.destroyed
+      ? "#373737"
+      : "#9d514e";
 
-  context.strokeStyle = unit.destroyed
-    ? "#989898"
-    : "#ffd1c6";
+  context.strokeStyle =
+    unit.destroyed
+      ? "#989898"
+      : "#ffd1c6";
 
   context.lineWidth = 2;
 
   context.beginPath();
-  context.moveTo(point.x, point.y - 13);
-  context.lineTo(point.x + 13, point.y + 10);
-  context.lineTo(point.x - 13, point.y + 10);
+
+  context.moveTo(
+    point.x,
+    point.y - 13,
+  );
+
+  context.lineTo(
+    point.x + 13,
+    point.y + 10,
+  );
+
+  context.lineTo(
+    point.x - 13,
+    point.y + 10,
+  );
+
   context.closePath();
   context.fill();
   context.stroke();
 
   context.beginPath();
-  context.moveTo(point.x - 8, point.y);
-  context.lineTo(point.x + 13, point.y);
-  context.stroke();
 
+  context.moveTo(
+    point.x - 8,
+    point.y,
+  );
+
+  context.lineTo(
+    point.x + 13,
+    point.y,
+  );
+
+  context.stroke();
   context.restore();
 }
 
-function drawContactIcon(context, point) {
-  context.fillStyle = "#d8a85f";
-  context.font = "900 24px system-ui";
-  context.textAlign = "center";
+function drawContactIcon(
+  context,
+  point,
+) {
+  context.fillStyle =
+    "#d8a85f";
+
+  context.font =
+    "900 24px system-ui";
+
+  context.textAlign =
+    "center";
 
   context.fillText(
     "?",
@@ -213,25 +372,55 @@ function drawContactIcon(context, point) {
   );
 }
 
-function drawDestroyedMarker(context, point) {
+function drawDestroyedMarker(
+  context,
+  point,
+) {
   context.save();
 
-  context.strokeStyle = "#ff8d7f";
+  context.strokeStyle =
+    "#ff8d7f";
+
   context.lineWidth = 3;
 
   context.beginPath();
-  context.moveTo(point.x - 15, point.y - 15);
-  context.lineTo(point.x + 15, point.y + 15);
-  context.moveTo(point.x + 15, point.y - 15);
-  context.lineTo(point.x - 15, point.y + 15);
+
+  context.moveTo(
+    point.x - 15,
+    point.y - 15,
+  );
+
+  context.lineTo(
+    point.x + 15,
+    point.y + 15,
+  );
+
+  context.moveTo(
+    point.x + 15,
+    point.y - 15,
+  );
+
+  context.lineTo(
+    point.x - 15,
+    point.y + 15,
+  );
+
   context.stroke();
 
-  context.fillStyle = "rgba(28, 31, 29, 0.8)";
+  context.fillStyle =
+    "rgba(28, 31, 29, 0.8)";
 
   context.beginPath();
-  context.arc(point.x, point.y, 5, 0, Math.PI * 2);
-  context.fill();
 
+  context.arc(
+    point.x,
+    point.y,
+    5,
+    0,
+    Math.PI * 2,
+  );
+
+  context.fill();
   context.restore();
 }
 
@@ -241,25 +430,37 @@ function drawUnitLabel(
   point,
   developerMode,
 ) {
-  context.fillStyle = unit.destroyed
-    ? "#b7b7b7"
-    : unit.side === "friendly"
-      ? "#edf4ef"
-      : "#ffd2c8";
+  context.fillStyle =
+    unit.destroyed
+      ? "#b7b7b7"
+      : unit.side === "friendly"
+        ? "#edf4ef"
+        : "#ffd2c8";
 
-  context.font = "800 10px system-ui";
-  context.textAlign = "center";
+  context.font =
+    "800 10px system-ui";
 
-  const baseLabel =
+  context.textAlign =
+    "center";
+
+  const unidentifiedEnemy =
     unit.side === "enemy" &&
     !developerMode &&
-    !unit.identified
+    (
+      unit.detectionStage ??
+      DETECTION_STAGES.HIDDEN
+    ) <
+      DETECTION_STAGES.IDENTIFIED;
+
+  const baseLabel =
+    unidentifiedEnemy
       ? "미확인"
       : unit.name ?? unit.id;
 
-  const label = unit.destroyed
-    ? `${baseLabel} [격파]`
-    : baseLabel;
+  const label =
+    unit.destroyed
+      ? `${baseLabel} [격파]`
+      : baseLabel;
 
   context.fillText(
     label,
@@ -268,7 +469,10 @@ function drawUnitLabel(
   );
 }
 
-function canDisplayHealth(unit, developerMode) {
+function canDisplayHealth(
+  unit,
+  developerMode,
+) {
   if (
     !unit.health ||
     unit.destroyed
@@ -295,32 +499,43 @@ function drawHealthBar(
   point,
   developerMode,
 ) {
-  if (!canDisplayHealth(unit, developerMode)) {
+  if (
+    !canDisplayHealth(
+      unit,
+      developerMode,
+    )
+  ) {
     return;
   }
 
-  const maximumHealth = Math.max(
-    1,
-    unit.health.maximum ?? 1,
-  );
+  const maximumHealth =
+    Math.max(
+      1,
+      unit.health.maximum ?? 1,
+    );
 
-  const currentHealth = Math.max(
-    0,
-    Math.min(
-      maximumHealth,
-      unit.health.current ?? maximumHealth,
-    ),
-  );
+  const currentHealth =
+    Math.max(
+      0,
+      Math.min(
+        maximumHealth,
+        unit.health.current ??
+          maximumHealth,
+      ),
+    );
 
   const healthRatio =
-    currentHealth / maximumHealth;
+    currentHealth /
+    maximumHealth;
 
   const width = 30;
   const height = 4;
 
   context.save();
 
-  context.fillStyle = "rgba(11, 14, 12, 0.85)";
+  context.fillStyle =
+    "rgba(11, 14, 12, 0.85)";
+
   context.fillRect(
     point.x - width / 2,
     point.y + 18,
@@ -328,11 +543,12 @@ function drawHealthBar(
     height,
   );
 
-  context.fillStyle = healthRatio > 0.5
-    ? "#88c795"
-    : healthRatio > 0.25
-      ? "#d4b468"
-      : "#d56f65";
+  context.fillStyle =
+    healthRatio > 0.5
+      ? "#88c795"
+      : healthRatio > 0.25
+        ? "#d4b468"
+        : "#d56f65";
 
   context.fillRect(
     point.x - width / 2,
@@ -366,63 +582,51 @@ function drawObservationCone(
   fillStyle,
   lineDash = [],
 ) {
+  if (
+    !Number.isFinite(direction) ||
+    !Number.isFinite(fieldOfView) ||
+    !Number.isFinite(radius) ||
+    fieldOfView <= 0 ||
+    radius <= 0
+  ) {
+    return;
+  }
+
   context.save();
 
-  context.fillStyle = fillStyle;
-  context.strokeStyle = strokeStyle;
+  context.fillStyle =
+    fillStyle;
+
+  context.strokeStyle =
+    strokeStyle;
+
   context.lineWidth = 2;
-  context.setLineDash(lineDash);
+
+  context.setLineDash(
+    lineDash,
+  );
 
   context.beginPath();
-  context.moveTo(point.x, point.y);
+
+  context.moveTo(
+    point.x,
+    point.y,
+  );
 
   context.arc(
     point.x,
     point.y,
     radius,
-    direction - fieldOfView / 2,
-    direction + fieldOfView / 2,
+    direction -
+      fieldOfView / 2,
+    direction +
+      fieldOfView / 2,
   );
 
   context.closePath();
   context.fill();
   context.stroke();
   context.restore();
-}
-
-function isCpsDisplayActive(unit) {
-  const observation = unit.crewObservation;
-  const sight =
-    observation?.commanderIndependentSight;
-  const hunterKiller =
-    observation?.hunterKiller;
-
-  if (
-    unit.destroyed ||
-    !sight?.operational
-  ) {
-    return false;
-  }
-
-  if (
-    sight.tracking ||
-    sight.locked
-  ) {
-    return true;
-  }
-
-  if (
-    CPS_VISIBLE_STATES.has(
-      hunterKiller?.state,
-    )
-  ) {
-    return true;
-  }
-
-  return (
-    unit.command === "전차장 CPS 감시" ||
-    unit.command === "헌터킬러 표적지향"
-  );
 }
 
 function drawCrewObservationAreas(
@@ -434,24 +638,35 @@ function drawCrewObservationAreas(
   if (
     unit.side !== "friendly" ||
     unit.destroyed ||
-    !unit.crewObservation ||
-    unit.action?.type !== UNIT_ACTIONS.OBSERVE
+    !unit.crewObservation
   ) {
     return;
   }
 
   const observers =
-    unit.crewObservation.observers ?? {};
+    unit.crewObservation
+      .observers ?? {};
 
-  Object.entries(observers).forEach(
-    ([crewRole, observer]) => {
+  Object.entries(
+    observers,
+  ).forEach(
+    ([
+      crewRole,
+      observer,
+    ]) => {
       const style =
-        CREW_OBSERVATION_STYLES[crewRole];
+        CREW_OBSERVATION_STYLES[
+          crewRole
+        ];
 
       if (
         !style ||
+        !observer ||
         observer.enabled === false ||
-        !Number.isFinite(observer.direction)
+        observer.observing !== true ||
+        !Number.isFinite(
+          observer.direction,
+        )
       ) {
         return;
       }
@@ -460,12 +675,42 @@ function drawCrewObservationAreas(
         context,
         point,
         observer.direction,
-        observer.fieldOfView ?? Math.PI / 2,
-        hexRadius * style.radiusFactor,
+
+        finiteOrDefault(
+          observer.fieldOfView,
+          Math.PI / 2,
+        ),
+
+        getObserverRadius(
+          unit,
+          observer,
+          hexRadius,
+        ),
+
         style.stroke,
         style.fill,
       );
     },
+  );
+}
+
+function isCpsDisplayActive(unit) {
+  const sight =
+    unit.crewObservation
+      ?.commanderIndependentSight;
+
+  return (
+    unit.side === "friendly" &&
+    !unit.destroyed &&
+    sight?.operational === true &&
+    sight.active === true &&
+    (
+      sight.locked === true ||
+      sight.tracking === true ||
+      Number.isFinite(
+        sight.direction,
+      )
+    )
   );
 }
 
@@ -476,7 +721,6 @@ function drawCpsObservationArea(
   hexRadius,
 ) {
   if (
-    unit.side !== "friendly" ||
     !isCpsDisplayActive(unit)
   ) {
     return;
@@ -484,25 +728,43 @@ function drawCpsObservationArea(
 
   const sight =
     unit.crewObservation
-      ?.commanderIndependentSight;
+      .commanderIndependentSight;
 
-  if (
-    !Number.isFinite(
-      sight?.direction,
-    )
-  ) {
-    return;
-  }
+  const cpsRadius =
+    hexRadius *
+    getBaseVisualRange(unit) *
+    nonNegativeOrDefault(
+      sight.range,
+      1.18,
+    );
 
   drawObservationCone(
     context,
     point,
     sight.direction,
-    Math.PI / 3,
-    hexRadius * 14,
+
+    finiteOrDefault(
+      sight.fieldOfView,
+      Math.PI / 3,
+    ),
+
+    cpsRadius,
+
     "rgba(255, 240, 145, 0.95)",
     "rgba(255, 240, 145, 0.08)",
-    [8, 5],
+
+    sight.locked
+      ? []
+      : [8, 5],
+  );
+}
+
+function isReconActive(unit) {
+  return (
+    unit.persistentAction?.type ===
+      UNIT_ACTIONS.RECON ||
+    unit.action?.type ===
+      UNIT_ACTIONS.RECON
   );
 }
 
@@ -515,7 +777,7 @@ function drawReconArea(
   if (
     unit.side !== "friendly" ||
     unit.destroyed ||
-    unit.action?.type !== UNIT_ACTIONS.RECON
+    !isReconActive(unit)
   ) {
     return;
   }
@@ -529,14 +791,18 @@ function drawReconArea(
     "rgba(150, 230, 184, 0.7)";
 
   context.lineWidth = 2;
-  context.setLineDash([7, 5]);
+
+  context.setLineDash(
+    [7, 5],
+  );
 
   context.beginPath();
 
   context.arc(
     point.x,
     point.y,
-    hexRadius * 10,
+    hexRadius *
+      getBaseVisualRange(unit),
     0,
     Math.PI * 2,
   );
@@ -598,37 +864,59 @@ function drawTurretDirections(
     unit.turretDirection ?? 0;
 
   const targetDirection =
-    unit.turretControl.targetDirection ??
+    unit.turretControl
+      .targetDirection ??
     currentDirection;
 
   context.save();
 
   context.lineWidth = 2;
-  context.strokeStyle = "#a9d5ff";
+  context.strokeStyle =
+    "#a9d5ff";
 
   context.beginPath();
-  context.moveTo(point.x, point.y);
+  context.moveTo(
+    point.x,
+    point.y,
+  );
 
   context.lineTo(
     point.x +
-      Math.cos(currentDirection) * 52,
+      Math.cos(
+        currentDirection,
+      ) * 52,
+
     point.y +
-      Math.sin(currentDirection) * 52,
+      Math.sin(
+        currentDirection,
+      ) * 52,
   );
 
   context.stroke();
 
-  context.strokeStyle = "#ffd078";
-  context.setLineDash([5, 4]);
+  context.strokeStyle =
+    "#ffd078";
+
+  context.setLineDash(
+    [5, 4],
+  );
 
   context.beginPath();
-  context.moveTo(point.x, point.y);
+  context.moveTo(
+    point.x,
+    point.y,
+  );
 
   context.lineTo(
     point.x +
-      Math.cos(targetDirection) * 68,
+      Math.cos(
+        targetDirection,
+      ) * 68,
+
     point.y +
-      Math.sin(targetDirection) * 68,
+      Math.sin(
+        targetDirection,
+      ) * 68,
   );
 
   context.stroke();
@@ -644,7 +932,9 @@ function drawDestination(
     unit.side !== "friendly" ||
     unit.destroyed ||
     !unit.destination ||
-    !Array.isArray(unit.plannedPath) ||
+    !Array.isArray(
+      unit.plannedPath,
+    ) ||
     unit.plannedPath.length === 0
   ) {
     return;
@@ -652,37 +942,53 @@ function drawDestination(
 
   const route = [
     {
-      column: unit.column,
-      row: unit.row,
+      column:
+        unit.column,
+
+      row:
+        unit.row,
     },
+
     ...unit.plannedPath,
   ];
 
   context.save();
 
-  context.strokeStyle = "#d7b46a";
+  context.strokeStyle =
+    "#d7b46a";
+
   context.lineWidth = 3;
-  context.setLineDash([7, 5]);
+
+  context.setLineDash(
+    [7, 5],
+  );
+
   context.beginPath();
 
-  route.forEach((hex, index) => {
-    const point = hexToWorld(
-      hex.column,
-      hex.row,
-    );
+  route.forEach(
+    (
+      hex,
+      index,
+    ) => {
+      const point =
+        hexToWorld(
+          hex.column,
+          hex.row,
+        );
 
-    if (index === 0) {
-      context.moveTo(
-        point.x,
-        point.y,
-      );
-    } else {
-      context.lineTo(
-        point.x,
-        point.y,
-      );
-    }
-  });
+      if (index === 0) {
+        context.moveTo(
+          point.x,
+          point.y,
+        );
+      } else {
+        context.lineTo(
+          point.x,
+          point.y,
+        );
+      }
+    },
+  );
 
   context.stroke();
   context.restore();
@@ -694,7 +1000,8 @@ function drawFireTarget(
   hexToWorld,
 ) {
   const target =
-    unit.fireControl?.targetHex;
+    unit.fireControl
+      ?.targetHex;
 
   if (
     !target ||
@@ -703,14 +1010,17 @@ function drawFireTarget(
     return;
   }
 
-  const point = hexToWorld(
-    target.column,
-    target.row,
-  );
+  const point =
+    hexToWorld(
+      target.column,
+      target.row,
+    );
 
   context.save();
 
-  context.strokeStyle = "#ff9a7f";
+  context.strokeStyle =
+    "#ff9a7f";
+
   context.lineWidth = 2;
 
   context.beginPath();
@@ -726,12 +1036,27 @@ function drawFireTarget(
   context.stroke();
 
   context.beginPath();
-  context.moveTo(point.x - 19, point.y);
-  context.lineTo(point.x + 19, point.y);
-  context.moveTo(point.x, point.y - 19);
-  context.lineTo(point.x, point.y + 19);
-  context.stroke();
+  context.moveTo(
+    point.x - 19,
+    point.y,
+  );
 
+  context.lineTo(
+    point.x + 19,
+    point.y,
+  );
+
+  context.moveTo(
+    point.x,
+    point.y - 19,
+  );
+
+  context.lineTo(
+    point.x,
+    point.y + 19,
+  );
+
+  context.stroke();
   context.restore();
 }
 
@@ -746,7 +1071,11 @@ export function drawUnits({
   isPointVisible,
 }) {
   units
-    .filter((unit) => unit.side === "friendly")
+    .filter(
+      (unit) =>
+        unit.side ===
+        "friendly",
+    )
     .forEach((unit) => {
       drawDestination(
         context,
@@ -771,10 +1100,11 @@ export function drawUnits({
       return;
     }
 
-    const point = hexToWorld(
-      unit.column,
-      unit.row,
-    );
+    const point =
+      hexToWorld(
+        unit.column,
+        unit.row,
+      );
 
     if (
       !isPointVisible(
@@ -793,7 +1123,8 @@ export function drawUnits({
     );
 
     if (
-      unit.id === selectedUnitId &&
+      unit.id ===
+        selectedUnitId &&
       !unit.destroyed
     ) {
       drawSelection(
@@ -814,7 +1145,8 @@ export function drawUnits({
         point,
       );
     } else if (
-      unit.type === "artillery-observer"
+      unit.type ===
+        "artillery-observer"
     ) {
       drawObserverIcon(
         context,
@@ -822,7 +1154,8 @@ export function drawUnits({
         point,
       );
     } else if (
-      unit.type === "atgm-team"
+      unit.type ===
+        "atgm-team"
     ) {
       drawAtgmIcon(
         context,
