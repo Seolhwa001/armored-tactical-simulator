@@ -1,4 +1,4 @@
-// src/engine/turretControl.js — 전체 교체
+// src/engine/turretControl.js — 전체 교체, 1~407행
 
 export const TURRET_MODES = Object.freeze({
   NORMAL: "normal",
@@ -17,15 +17,15 @@ export const TURRET_MODE_SETTINGS = Object.freeze({
   [TURRET_MODES.EMERGENCY]: {
     traverseSpeed: Math.PI / 4,
     stabilizerAvailable: false,
-    movingTrackingFactor: 0.55,
+    movingTrackingFactor: 0.8,
     movingFirePenalty: 0.35,
   },
 
   [TURRET_MODES.MANUAL]: {
     traverseSpeed: Math.PI / 18,
     stabilizerAvailable: false,
-    movingTrackingFactor: 0,
-    movingFirePenalty: 1,
+    movingTrackingFactor: 0.35,
+    movingFirePenalty: 0.65,
   },
 });
 
@@ -87,15 +87,14 @@ function createIdleAction() {
     targetHex: null,
     targetUnitId: null,
     direction: null,
+    crewRole: null,
     startedTurn: null,
     persistent: true,
   };
 }
 
-function stopTargetTracking(unit) {
+function stopTurretTracking(unit) {
   if (
-    unit.action?.type ===
-      "observe" ||
     unit.action?.type ===
       "recon-by-fire" ||
     unit.action?.type ===
@@ -135,10 +134,13 @@ export function createTurretControl(
   const settings =
     TURRET_MODE_SETTINGS[mode];
 
-  const initialDirection =
-    unitData.turretDirection ??
+  const hullDirection =
     unitData.hullDirection ??
     0;
+
+  const initialDirection =
+    unitData.turretDirection ??
+    hullDirection;
 
   return {
     mode,
@@ -168,8 +170,14 @@ export function createTurretControl(
         ?.lockedToHull ??
       false,
 
+    lastHullDirection:
+      unitData.turretControl
+        ?.lastHullDirection ??
+      hullDirection,
+
     aligned: true,
     rotating: false,
+    hullCoupled: false,
     warning: null,
 
     movingTrackingFactor:
@@ -185,6 +193,7 @@ export function setTurretMode(
   mode,
 ) {
   if (
+    unit.destroyed ||
     !unit.turretControl ||
     !TURRET_MODE_SETTINGS[mode]
   ) {
@@ -198,47 +207,48 @@ export function setTurretMode(
   const settings =
     TURRET_MODE_SETTINGS[mode];
 
-  unit.turretControl.mode =
-    mode;
+  const control =
+    unit.turretControl;
 
-  unit.turretControl.traverseSpeed =
+  control.mode = mode;
+
+  control.traverseSpeed =
     settings.traverseSpeed;
 
-  unit.turretControl
-    .movingTrackingFactor =
+  control.movingTrackingFactor =
     settings.movingTrackingFactor;
 
-  unit.turretControl
-    .movingFirePenalty =
+  control.movingFirePenalty =
     settings.movingFirePenalty;
 
-  unit.turretControl.warning =
-    null;
+  control.lastHullDirection =
+    unit.hullDirection ??
+    control.lastHullDirection ??
+    0;
+
+  control.warning = null;
 
   if (
     mode === TURRET_MODES.NORMAL &&
-    !unit.turretControl
-      .driveOperational
+    !control.driveOperational
   ) {
-    unit.turretControl.warning =
+    control.warning =
       "포탑 구동장치 고장";
   }
 
   if (
-    mode ===
-      TURRET_MODES.EMERGENCY &&
-    unit.turretControl
-      .stabilizerOperational
+    mode === TURRET_MODES.EMERGENCY &&
+    control.stabilizerOperational
   ) {
-    unit.turretControl.warning =
+    control.warning =
       "안정화장치 정상 상태에서 비상구동 선택";
   }
 
   if (
     mode === TURRET_MODES.MANUAL
   ) {
-    unit.turretControl.warning =
-      "수동구동: 정지 상태에서만 포탑 회전 및 사격 가능";
+    control.warning =
+      "수동구동: 회전속도와 조준성능 감소";
   }
 
   updateAimStability(
@@ -249,7 +259,7 @@ export function setTurretMode(
   return {
     success: true,
     warning:
-      unit.turretControl.warning,
+      control.warning,
   };
 }
 
@@ -258,20 +268,24 @@ export function setTurretTargetDirection(
   direction,
 ) {
   if (
+    unit.destroyed ||
     !unit.turretControl ||
     !Number.isFinite(direction)
   ) {
     return false;
   }
 
-  unit.turretControl.targetDirection =
+  const control =
+    unit.turretControl;
+
+  control.targetDirection =
     normalizeAngle(direction);
 
-  unit.turretControl.aligned =
+  control.aligned =
     isTurretAligned(unit);
 
-  unit.turretControl.rotating =
-    !unit.turretControl.aligned;
+  control.rotating =
+    !control.aligned;
 
   return true;
 }
@@ -279,7 +293,10 @@ export function setTurretTargetDirection(
 export function unlockTurretFromHull(
   unit,
 ) {
-  if (!unit.turretControl) {
+  if (
+    unit.destroyed ||
+    !unit.turretControl
+  ) {
     return false;
   }
 
@@ -293,7 +310,10 @@ export function commandMainGunStow(
   unit,
   turn = 1,
 ) {
-  if (!unit.turretControl) {
+  if (
+    unit.destroyed ||
+    !unit.turretControl
+  ) {
     return {
       success: false,
       reason:
@@ -301,31 +321,31 @@ export function commandMainGunStow(
     };
   }
 
-  stopTargetTracking(unit);
+  stopTurretTracking(unit);
 
-  unit.turretControl.lockedToHull =
-    true;
+  const control =
+    unit.turretControl;
 
-  unit.turretControl.targetDirection =
+  control.lockedToHull = true;
+
+  control.targetDirection =
     normalizeAngle(
       unit.hullDirection ?? 0,
     );
 
-  unit.turretControl.aligned =
+  control.aligned =
     isTurretAligned(unit);
 
-  unit.turretControl.rotating =
-    !unit.turretControl.aligned;
+  control.rotating =
+    !control.aligned;
 
   unit.action = {
     type: "turret-stow",
     targetHex: null,
     targetUnitId: null,
-
     direction:
-      unit.turretControl
-        .targetDirection,
-
+      control.targetDirection,
+    crewRole: null,
     startedTurn: turn,
     persistent: true,
   };
@@ -335,10 +355,8 @@ export function commandMainGunStow(
 
   return {
     success: true,
-
     completed:
-      unit.turretControl
-        .aligned,
+      control.aligned,
   };
 }
 
@@ -373,14 +391,61 @@ export function isStabilizerAvailable(
     return false;
   }
 
+  const control =
+    unit.turretControl;
+
   return (
-    unit.turretControl.mode ===
+    control.mode ===
       TURRET_MODES.NORMAL &&
-    unit.turretControl
-      .driveOperational &&
-    unit.turretControl
-      .stabilizerOperational
+    control.driveOperational &&
+    control.stabilizerOperational
   );
+}
+
+function applyHullCoupling(unit) {
+  const control =
+    unit.turretControl;
+
+  const hullDirection =
+    normalizeAngle(
+      unit.hullDirection ?? 0,
+    );
+
+  const previousHullDirection =
+    normalizeAngle(
+      control.lastHullDirection ??
+      hullDirection,
+    );
+
+  const hullChange =
+    getAngleDifference(
+      previousHullDirection,
+      hullDirection,
+    );
+
+  control.lastHullDirection =
+    hullDirection;
+
+  if (
+    isStabilizerAvailable(unit) ||
+    Math.abs(hullChange) <
+      Number.EPSILON
+  ) {
+    control.hullCoupled = false;
+    return false;
+  }
+
+  unit.turretDirection =
+    normalizeAngle(
+      (
+        unit.turretDirection ??
+        hullDirection
+      ) + hullChange,
+    );
+
+  control.hullCoupled = true;
+
+  return true;
 }
 
 function getTraverseStep(
@@ -402,22 +467,10 @@ function getTraverseStep(
     return 0;
   }
 
-  if (
-    control.mode ===
-      TURRET_MODES.MANUAL &&
-    moving
-  ) {
-    return 0;
-  }
-
   let step =
     control.traverseSpeed;
 
-  if (
-    moving &&
-    control.mode ===
-      TURRET_MODES.EMERGENCY
-  ) {
+  if (moving) {
     step *=
       control.movingTrackingFactor;
   }
@@ -436,24 +489,25 @@ function updateAimStability(
     return;
   }
 
-  const mode =
-    unit.turretControl.mode;
+  const control =
+    unit.turretControl;
 
   if (
-    mode === TURRET_MODES.NORMAL
+    control.mode ===
+    TURRET_MODES.NORMAL
   ) {
     unit.fireControl.aimStability =
       isStabilizerAvailable(unit)
         ? 1
         : moving
-          ? 0.65
-          : 0.85;
+          ? 0.6
+          : 0.82;
 
     return;
   }
 
   if (
-    mode ===
+    control.mode ===
     TURRET_MODES.EMERGENCY
   ) {
     unit.fireControl.aimStability =
@@ -466,7 +520,7 @@ function updateAimStability(
 
   unit.fireControl.aimStability =
     moving
-      ? 0
+      ? 0.22
       : 0.4;
 }
 
@@ -474,10 +528,17 @@ export function updateTurretRotation(
   unit,
   options = {},
 ) {
-  if (!unit.turretControl) {
+  if (
+    unit.destroyed ||
+    !unit.turretControl
+  ) {
     return {
       rotated: false,
-      aligned: true,
+      aligned:
+        !unit.turretControl,
+      blocked:
+        unit.destroyed === true,
+      hullCoupled: false,
     };
   }
 
@@ -486,6 +547,14 @@ export function updateTurretRotation(
 
   const control =
     unit.turretControl;
+
+  const previousDirection =
+    unit.turretDirection ??
+    unit.hullDirection ??
+    0;
+
+  const hullCoupled =
+    applyHullCoupling(unit);
 
   if (control.lockedToHull) {
     control.targetDirection =
@@ -513,18 +582,23 @@ export function updateTurretRotation(
     );
 
     return {
-      rotated: false,
-      aligned: control.aligned,
+      rotated:
+        previousDirection !==
+        unit.turretDirection,
+
+      aligned:
+        control.aligned,
+
       blocked: true,
+      hullCoupled,
     };
   }
 
-  const previousDirection =
-    unit.turretDirection ?? 0;
-
   unit.turretDirection =
     moveAngleToward(
-      previousDirection,
+      unit.turretDirection ??
+        previousDirection,
+
       control.targetDirection,
       step,
     );
@@ -534,6 +608,14 @@ export function updateTurretRotation(
 
   control.rotating =
     !control.aligned;
+
+  if (
+    control.lockedToHull &&
+    control.aligned
+  ) {
+    unit.command =
+      "주포 정위치";
+  }
 
   updateAimStability(
     unit,
@@ -545,8 +627,11 @@ export function updateTurretRotation(
       previousDirection !==
       unit.turretDirection,
 
-    aligned: control.aligned,
+    aligned:
+      control.aligned,
+
     blocked: false,
+    hullCoupled,
   };
 }
 
@@ -554,6 +639,14 @@ export function canTurretFire(
   unit,
   options = {},
 ) {
+  if (unit.destroyed) {
+    return {
+      allowed: false,
+      reason:
+        "격파된 객체는 사격할 수 없습니다.",
+    };
+  }
+
   if (
     !unit.fireControl ||
     !unit.turretControl
@@ -565,21 +658,6 @@ export function canTurretFire(
     };
   }
 
-  const moving =
-    options.moving === true;
-
-  if (
-    unit.turretControl.mode ===
-      TURRET_MODES.MANUAL &&
-    moving
-  ) {
-    return {
-      allowed: false,
-      reason:
-        "수동구동 중에는 이동 중 사격할 수 없습니다.",
-    };
-  }
-
   if (!isTurretAligned(unit)) {
     return {
       allowed: false,
@@ -587,11 +665,13 @@ export function canTurretFire(
     };
   }
 
+  const control =
+    unit.turretControl;
+
   if (
-    unit.turretControl.mode ===
+    control.mode ===
       TURRET_MODES.NORMAL &&
-    !unit.turretControl
-      .driveOperational
+    !control.driveOperational
   ) {
     return {
       allowed: false,
@@ -600,12 +680,23 @@ export function canTurretFire(
     };
   }
 
+  updateAimStability(
+    unit,
+    options.moving === true,
+  );
+
   return {
     allowed: true,
     reason: null,
 
     aimStability:
-      unit.fireControl.aimStability,
+      unit.fireControl
+        .aimStability,
+
+    movingFirePenalty:
+      options.moving === true
+        ? control.movingFirePenalty
+        : 0,
   };
 }
 
