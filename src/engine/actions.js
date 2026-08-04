@@ -1583,6 +1583,13 @@ export function processPersistentActions(
         turn,
       );
 
+      const hunterKillerContext =
+        updateHunterKillerTargeting(
+          unit,
+          runtimeScenario,
+          hunterKillerStates,
+        );
+
       updateTurretRotation(
         unit,
         {
@@ -1600,13 +1607,6 @@ export function processPersistentActions(
         unit,
         turn,
       );
-
-      const hunterKillerContext =
-        updateHunterKillerTargeting(
-          unit,
-          runtimeScenario,
-          hunterKillerStates,
-        );
 
       updateCommanderSightRotation(
         unit,
