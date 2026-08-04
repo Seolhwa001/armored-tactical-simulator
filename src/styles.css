@@ -53,6 +53,11 @@ button {
   color: inherit;
 }
 
+button:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
 button:focus-visible,
 select:focus-visible,
 input:focus-visible {
@@ -66,7 +71,11 @@ input:focus-visible {
   min-height: 0;
   overflow: hidden;
   background:
-    radial-gradient(circle at top, #15231d 0%, var(--bg) 45%);
+    radial-gradient(
+      circle at top,
+      #15231d 0%,
+      var(--bg) 45%
+    );
 }
 
 .screen {
@@ -78,23 +87,27 @@ input:focus-visible {
   display: none;
 }
 
-/* 메인 메뉴 */
-
 .menu-screen {
   min-height: 100%;
   display: grid;
   align-content: center;
   gap: 40px;
   padding:
-    max(24px, env(safe-area-inset-top))
+    max(
+      24px,
+      env(safe-area-inset-top)
+    )
     20px
-    max(24px, env(safe-area-inset-bottom));
+    max(
+      24px,
+      env(safe-area-inset-bottom)
+    );
 }
 
 .menu-screen__header {
   max-width: 520px;
-  text-align: center;
   margin-inline: auto;
+  text-align: center;
 }
 
 .eyebrow {
@@ -107,7 +120,11 @@ input:focus-visible {
 
 .menu-screen h1 {
   margin: 0;
-  font-size: clamp(2rem, 10vw, 3.5rem);
+  font-size: clamp(
+    2rem,
+    10vw,
+    3.5rem
+  );
   line-height: 1.02;
   letter-spacing: -0.04em;
 }
@@ -120,7 +137,10 @@ input:focus-visible {
 }
 
 .menu-actions {
-  width: min(100%, 420px);
+  width: min(
+    100%,
+    420px
+  );
   display: grid;
   gap: 12px;
   margin-inline: auto;
@@ -144,8 +164,6 @@ input:focus-visible {
   transform: translateY(1px);
 }
 
-/* 전투 화면 */
-
 .battle-layout {
   height: 100dvh;
   min-height: 0;
@@ -160,7 +178,10 @@ input:focus-visible {
 .battle-header {
   min-width: 0;
   display: grid;
-  grid-template-columns: 48px minmax(0, 1fr) 48px;
+  grid-template-columns:
+    48px
+    minmax(0, 1fr)
+    auto;
   align-items: center;
   gap: 8px;
   padding:
@@ -168,7 +189,13 @@ input:focus-visible {
     8px
     0;
   border-bottom: 1px solid var(--border);
-  background: rgba(11, 18, 15, 0.97);
+  background:
+    rgba(
+      11,
+      18,
+      15,
+      0.97
+    );
   z-index: 20;
 }
 
@@ -193,6 +220,13 @@ input:focus-visible {
   font-weight: 800;
 }
 
+.battle-header__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+}
+
 .icon-button {
   width: 44px;
   height: 44px;
@@ -205,8 +239,6 @@ input:focus-visible {
 .icon-button:active {
   background: var(--surface-3);
 }
-
-/* 지도 */
 
 .map-area {
   position: relative;
@@ -223,8 +255,18 @@ input:focus-visible {
   height: 100%;
   background:
     linear-gradient(
-      rgba(255, 255, 255, 0.015),
-      rgba(255, 255, 255, 0.015)
+      rgba(
+        255,
+        255,
+        255,
+        0.015
+      ),
+      rgba(
+        255,
+        255,
+        255,
+        0.015
+      )
     ),
     #111912;
 }
@@ -243,7 +285,13 @@ input:focus-visible {
   height: 44px;
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: rgba(11, 18, 15, 0.9);
+  background:
+    rgba(
+      11,
+      18,
+      15,
+      0.9
+    );
   font-size: 1.4rem;
   font-weight: 700;
 }
@@ -252,30 +300,50 @@ input:focus-visible {
   position: absolute;
   left: 50%;
   bottom: 12px;
-  max-width: calc(100% - 32px);
-  transform: translateX(-50%);
+  max-width:
+    calc(
+      100% - 32px
+    );
+  transform:
+    translateX(-50%);
   padding: 7px 12px;
-  border: 1px solid rgba(158, 189, 139, 0.25);
+  border:
+    1px solid
+    rgba(
+      158,
+      189,
+      139,
+      0.25
+    );
   border-radius: 999px;
-  background: rgba(8, 16, 13, 0.84);
+  background:
+    rgba(
+      8,
+      16,
+      13,
+      0.84
+    );
   color: var(--text-muted);
   font-size: 0.76rem;
   text-align: center;
   pointer-events: none;
 }
 
-/* 커맨드 영역 */
-
 .command-dock {
   min-width: 0;
-  max-height: 42dvh;
+  max-height: 46dvh;
   display: grid;
   gap: var(--gap);
   padding:
     8px
     8px
-    max(8px, env(safe-area-inset-bottom));
-  border-top: 1px solid var(--border);
+    max(
+      8px,
+      env(safe-area-inset-bottom)
+    );
+  border-top:
+    1px solid
+    var(--border);
   background: var(--surface);
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -284,14 +352,20 @@ input:focus-visible {
 
 .unit-summary {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns:
+    repeat(
+      3,
+      minmax(0, 1fr)
+    );
   gap: 6px;
 }
 
 .unit-summary > div {
   min-width: 0;
   padding: 7px 8px;
-  border: 1px solid var(--border);
+  border:
+    1px solid
+    var(--border);
   border-radius: 9px;
   background: var(--surface-2);
 }
@@ -316,7 +390,11 @@ input:focus-visible {
 
 .command-categories {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns:
+    repeat(
+      4,
+      minmax(0, 1fr)
+    );
   gap: 6px;
 }
 
@@ -324,7 +402,9 @@ input:focus-visible {
   min-width: 0;
   min-height: 46px;
   padding: 6px 4px;
-  border: 1px solid var(--border);
+  border:
+    1px solid
+    var(--border);
   border-radius: 9px;
   background: var(--surface-2);
   font-size: 0.76rem;
@@ -340,7 +420,11 @@ input:focus-visible {
 .command-options {
   min-height: 52px;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns:
+    repeat(
+      3,
+      minmax(0, 1fr)
+    );
   gap: 6px;
 }
 
@@ -356,7 +440,9 @@ input:focus-visible {
 .command-option {
   min-height: 46px;
   padding: 6px;
-  border: 1px solid var(--border);
+  border:
+    1px solid
+    var(--border);
   border-radius: 9px;
   background: var(--surface-3);
   font-size: 0.75rem;
@@ -369,9 +455,76 @@ input:focus-visible {
   color: #ffe3a5;
 }
 
+.fire-procedure {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns:
+    repeat(
+      3,
+      minmax(0, 1fr)
+    );
+  gap: 6px;
+  padding: 8px;
+  border:
+    1px solid
+    var(--border);
+  border-radius: 10px;
+  background:
+    rgba(
+      23,
+      35,
+      30,
+      0.88
+    );
+}
+
+.fire-procedure > .command-option:first-child {
+  grid-column: 1 / -1;
+}
+
+.fire-ammunition-group {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns:
+    repeat(
+      4,
+      minmax(0, 1fr)
+    );
+  gap: 6px;
+}
+
+.fire-ammunition-group .command-option {
+  min-height: 40px;
+  padding-inline: 3px;
+  font-size: 0.7rem;
+}
+
+.fire-target-status {
+  grid-column: 1 / -1;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 8px;
+  border:
+    1px dashed
+    var(--border-strong);
+  border-radius: 8px;
+  background: #111a16;
+  color: var(--text-muted);
+  font-size: 0.74rem;
+  text-align: center;
+}
+
+.fire-procedure > .command-option:nth-last-child(-n + 3) {
+  min-height: 48px;
+}
+
 .execute-turn-button {
   min-height: 58px;
-  border: 1px solid var(--accent);
+  border:
+    1px solid
+    var(--accent);
   border-radius: 11px;
   background: var(--accent);
   color: #09100b;
@@ -384,30 +537,48 @@ input:focus-visible {
   filter: brightness(0.9);
 }
 
-/* 다이얼로그 */
-
 .app-dialog {
-  width: min(calc(100% - 28px), 440px);
+  width:
+    min(
+      calc(
+        100% - 28px
+      ),
+      440px
+    );
   padding: 0;
-  border: 1px solid var(--border-strong);
+  border:
+    1px solid
+    var(--border-strong);
   border-radius: 14px;
   background: var(--surface);
   color: var(--text);
 }
 
 .app-dialog::backdrop {
-  background: rgba(0, 0, 0, 0.68);
+  background:
+    rgba(
+      0,
+      0,
+      0,
+      0.68
+    );
   backdrop-filter: blur(3px);
 }
 
 .dialog-header {
+  min-height: 54px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  min-height: 54px;
-  padding: 6px 8px 6px 16px;
-  border-bottom: 1px solid var(--border);
+  padding:
+    6px
+    8px
+    6px
+    16px;
+  border-bottom:
+    1px solid
+    var(--border);
 }
 
 .dialog-header h2 {
@@ -423,6 +594,10 @@ input:focus-visible {
   line-height: 1.6;
 }
 
+.dialog-content p {
+  margin: 0;
+}
+
 .setting-row {
   display: flex;
   align-items: center;
@@ -433,13 +608,49 @@ input:focus-visible {
 .setting-row select {
   min-height: 40px;
   padding-inline: 10px;
-  border: 1px solid var(--border);
+  border:
+    1px solid
+    var(--border);
   border-radius: 8px;
   background: var(--surface-3);
   color: var(--text);
 }
 
-/* 작은 화면 */
+@media (max-width: 420px) {
+  .battle-header {
+    grid-template-columns:
+      44px
+      minmax(0, 1fr)
+      auto;
+    gap: 2px;
+    padding-inline: 4px;
+  }
+
+  .battle-header__status {
+    gap: 5px;
+  }
+
+  .battle-header__status strong {
+    font-size: 0.84rem;
+  }
+
+  .battle-header__actions {
+    gap: 0;
+  }
+
+  .icon-button {
+    width: 40px;
+    height: 40px;
+  }
+
+  .fire-ammunition-group {
+    grid-template-columns:
+      repeat(
+        2,
+        minmax(0, 1fr)
+      );
+  }
+}
 
 @media (max-height: 680px) {
   :root {
@@ -447,7 +658,7 @@ input:focus-visible {
   }
 
   .command-dock {
-    max-height: 46dvh;
+    max-height: 50dvh;
     gap: 6px;
     padding-top: 6px;
   }
@@ -461,17 +672,23 @@ input:focus-visible {
     min-height: 42px;
   }
 
+  .fire-procedure {
+    padding: 6px;
+  }
+
   .execute-turn-button {
     min-height: 52px;
   }
 }
 
-/* 넓은 화면 */
-
 @media (min-width: 700px) {
   .battle-layout {
-    grid-template-columns: minmax(0, 1fr) 360px;
-    grid-template-rows: var(--header-height) minmax(0, 1fr);
+    grid-template-columns:
+      minmax(0, 1fr)
+      380px;
+    grid-template-rows:
+      var(--header-height)
+      minmax(0, 1fr);
   }
 
   .battle-header {
@@ -488,6 +705,8 @@ input:focus-visible {
     grid-row: 2;
     max-height: none;
     border-top: 0;
-    border-left: 1px solid var(--border);
+    border-left:
+      1px solid
+      var(--border);
   }
-}
+  }
