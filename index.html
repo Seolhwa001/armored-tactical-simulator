@@ -22,10 +22,49 @@
     href="./src/styles.css?v=0.3.4"
   >
 
-  <script
-    type="module"
-    src="./src/app.js?v=0.3.4"
-  ></script>
+<script type="module">
+  const errorBox = document.createElement("pre");
+
+  errorBox.style.position = "fixed";
+  errorBox.style.inset = "12px";
+  errorBox.style.zIndex = "99999";
+  errorBox.style.display = "none";
+  errorBox.style.padding = "14px";
+  errorBox.style.overflow = "auto";
+  errorBox.style.whiteSpace = "pre-wrap";
+  errorBox.style.background = "#240b0b";
+  errorBox.style.color = "#ffb4b4";
+  errorBox.style.border = "1px solid #ff6b6b";
+  errorBox.style.borderRadius = "10px";
+
+  document.body.append(errorBox);
+
+  function showError(error) {
+    errorBox.style.display = "block";
+    errorBox.textContent =
+      "ATS 실행 오류\n\n" +
+      (error?.stack ?? error?.message ?? String(error));
+  }
+
+  window.addEventListener("error", (event) => {
+    showError(event.error ?? event.message);
+  });
+
+  window.addEventListener(
+    "unhandledrejection",
+    (event) => {
+      showError(event.reason);
+    },
+  );
+
+  try {
+    await import(
+      `./src/app.js?v=0.3.5-${Date.now()}`
+    );
+  } catch (error) {
+    showError(error);
+  }
+</script>
 </head>
 
 <body>
