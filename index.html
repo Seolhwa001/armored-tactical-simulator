@@ -29,7 +29,26 @@
     href="./src/styles.css?v=0.3.6"
   >
 
-  <script type="module">
+<!doctype html>
+<html>
+<head>
+
+...
+
+<link rel="stylesheet" href="./src/styles.css?v=0.3.6">
+
+여기 ↓↓↓
+
+<script type="module">
+    ...
+</script>
+
+여기 ↑↑↑
+
+</head>
+
+<body>
+...
     const errorBox =
       document.createElement(
         "pre",
