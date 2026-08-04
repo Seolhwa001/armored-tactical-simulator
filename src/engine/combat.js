@@ -1,977 +1,712 @@
-// src/engine/combat.js — 새 파일, 1~274행
-
+// src/engine/combat.js — 전체 교체
 
 const DIRECT_FIRE_AMMUNITION = new Set([
-
-"apfsds",
-
-"heat",
-
-"canister",
-
+  "apfsds",
+  "heat",
+  "canister",
 ]);
-
 
 const DIRECT_HIT_UNIT_TYPES = new Set([
-
-"artillery-observer",
-
-"atgm-team",
-
+  "artillery-observer",
+  "atgm-team",
 ]);
 
-
 const AMMUNITION_DAMAGE = Object.freeze({
+  apfsds: {
+    minimum: 42,
+    maximum: 68,
+    accuracy: 0.82,
+  },
 
-apfsds: {
+  heat: {
+    minimum: 34,
+    maximum: 58,
+    accuracy: 0.76,
+  },
 
-minimum: 42,
+  canister: {
+    minimum: 18,
+    maximum: 36,
+    accuracy: 0.72,
+  },
 
-maximum: 68,
-
-accuracy: 0.82,
-
-},
-
-
-heat: {
-
-minimum: 34,
-
-maximum: 58,
-
-accuracy: 0.76,
-
-},
-
-
-canister: {
-
-minimum: 18,
-
-maximum: 36,
-
-accuracy: 0.72,
-
-},
-
-
-smoke: {
-
-minimum: 0,
-
-maximum: 0,
-
-accuracy: 1,
-
-},
-
+  smoke: {
+    minimum: 0,
+    maximum: 0,
+    accuracy: 1,
+  },
 });
 
-
 const SMOKE_DURATION_TURNS = 3;
-
 const SMOKE_RADIUS = 1;
 
+const SMOKE_SOURCES = Object.freeze({
+  MAIN_GUN: "main-gun",
+  VEHICLE: "vehicle",
+});
 
 function clamp(
-
-value,
-
-minimum,
-
-maximum,
-
+  value,
+  minimum,
+  maximum,
 ) {
-
-return Math.min(
-
-maximum,
-
-Math.max(
-
-minimum,
-
-value,
-
-),
-
-);
-
+  return Math.min(
+    maximum,
+    Math.max(
+      minimum,
+      value,
+    ),
+  );
 }
-
 
 function randomBetween(
-
-minimum,
-
-maximum,
-
+  minimum,
+  maximum,
 ) {
-
-return (
-
-minimum +
-
-Math.random() *
-
-(maximum - minimum)
-
-);
-
+  return (
+    minimum +
+    Math.random() *
+      (maximum - minimum)
+  );
 }
 
+function ensureSmokeAreas(
+  runtimeScenario,
+) {
+  if (
+    !Array.isArray(
+      runtimeScenario.smokeAreas,
+    )
+  ) {
+    runtimeScenario.smokeAreas = [];
+  }
+
+  return runtimeScenario.smokeAreas;
+}
+
+function removeExpiredAreasBeforeCreation(
+  runtimeScenario,
+  turn,
+) {
+  ensureSmokeAreas(
+    runtimeScenario,
+  );
+
+  runtimeScenario.smokeAreas =
+    runtimeScenario.smokeAreas.filter(
+      (area) =>
+        area.expiresTurn >= turn,
+    );
+}
+
+function createOrRefreshSmokeArea({
+  runtimeScenario,
+  sourceUnit,
+  targetHex,
+  turn,
+  sourceType,
+}) {
+  if (
+    !runtimeScenario ||
+    !sourceUnit ||
+    !targetHex
+  ) {
+    return null;
+  }
+
+  removeExpiredAreasBeforeCreation(
+    runtimeScenario,
+    turn,
+  );
+
+  const existing =
+    runtimeScenario.smokeAreas.find(
+      (area) =>
+        area.column ===
+          targetHex.column &&
+        area.row ===
+          targetHex.row,
+    );
+
+  if (existing) {
+    existing.startedTurn = turn;
+
+    existing.expiresTurn =
+      turn +
+      SMOKE_DURATION_TURNS;
+
+    existing.sourceUnitId =
+      sourceUnit.id;
+
+    existing.sourceType =
+      sourceType;
+
+    return existing;
+  }
+
+  const smokeArea = {
+    id:
+      `smoke-${sourceType}-` +
+      `${sourceUnit.id}-${turn}-` +
+      `${targetHex.column}-${targetHex.row}`,
+
+    column: targetHex.column,
+    row: targetHex.row,
+    radius: SMOKE_RADIUS,
+
+    sourceUnitId:
+      sourceUnit.id,
+
+    sourceType,
+
+    startedTurn: turn,
+
+    expiresTurn:
+      turn +
+      SMOKE_DURATION_TURNS,
+  };
+
+  runtimeScenario.smokeAreas.push(
+    smokeArea,
+  );
+
+  return smokeArea;
+}
 
 function getTargetUnit(
-
-runtimeScenario,
-
-shooter,
-
+  runtimeScenario,
+  shooter,
 ) {
+  const targetUnitId =
+    shooter.fireControl
+      ?.targetUnitId;
 
-const targetUnitId =
+  if (targetUnitId) {
+    return (
+      runtimeScenario.units.find(
+        (unit) =>
+          unit.id ===
+            targetUnitId &&
+          !unit.destroyed,
+      ) ?? null
+    );
+  }
 
-shooter.fireControl
+  const targetHex =
+    shooter.fireControl
+      ?.targetHex;
 
-?.targetUnitId;
+  if (!targetHex) {
+    return null;
+  }
 
-
-if (targetUnitId) {
-
-return (
-
-runtimeScenario.units.find(
-
-(unit) =>
-
-unit.id ===
-
-targetUnitId &&
-
-!unit.destroyed,
-
-) ?? null
-
-);
-
+  return (
+    runtimeScenario.units.find(
+      (unit) =>
+        unit.side !==
+          shooter.side &&
+        !unit.destroyed &&
+        unit.column ===
+          targetHex.column &&
+        unit.row ===
+          targetHex.row,
+    ) ?? null
+  );
 }
-
-
-const targetHex =
-
-shooter.fireControl
-
-?.targetHex;
-
-
-if (!targetHex) {
-
-return null;
-
-}
-
-
-return (
-
-runtimeScenario.units.find(
-
-(unit) =>
-
-unit.side !==
-
-shooter.side &&
-
-!unit.destroyed &&
-
-unit.column ===
-
-targetHex.column &&
-
-unit.row ===
-
-targetHex.row,
-
-) ?? null
-
-);
-
-}
-
 
 function calculateHitChance(
-
-shooter,
-
-target,
-
-shotOptions,
-
+  shooter,
+  target,
+  shotOptions,
 ) {
+  const ammunition =
+    shooter.fireControl
+      ?.ammunition;
 
-const ammunition =
+  const ammunitionData =
+    AMMUNITION_DAMAGE[
+      ammunition
+    ] ??
+    AMMUNITION_DAMAGE.heat;
 
-shooter.fireControl
+  const aimStability = clamp(
+    shotOptions.aimStability ??
+      shooter.fireControl
+        ?.aimStability ??
+      1,
+    0,
+    1,
+  );
 
-?.ammunition;
+  const movingPenalty = clamp(
+    shotOptions
+      .movingFirePenalty ??
+      0,
+    0,
+    0.9,
+  );
 
+  const concealmentPenalty =
+    clamp(
+      (
+        target?.concealment ??
+        0
+      ) / 250,
+      0,
+      0.35,
+    );
 
-const ammunitionData =
-
-AMMUNITION_DAMAGE[
-
-ammunition
-
-] ??
-
-AMMUNITION_DAMAGE.heat;
-
-
-const aimStability =
-
-clamp(
-
-shotOptions
-
-.aimStability ??
-
-shooter.fireControl
-
-?.aimStability ??
-
-1,
-
-0,
-
-1,
-
-);
-
-
-const movingPenalty =
-
-clamp(
-
-shotOptions
-
-.movingFirePenalty ??
-
-0,
-
-0,
-
-0.9,
-
-);
-
-
-const concealmentPenalty =
-
-clamp(
-
-(
-
-target?.concealment ??
-
-0
-
-) / 250,
-
-0,
-
-0.35,
-
-);
-
-
-return clamp(
-
-ammunitionData.accuracy *
-
-aimStability -
-
-movingPenalty -
-
-concealmentPenalty,
-
-0.05,
-
-0.95,
-
-);
-
+  return clamp(
+    ammunitionData.accuracy *
+      aimStability -
+      movingPenalty -
+      concealmentPenalty,
+    0.05,
+    0.95,
+  );
 }
-
 
 function calculateDamage(
-
-shooter,
-
-target,
-
+  shooter,
+  target,
 ) {
+  const ammunition =
+    shooter.fireControl
+      ?.ammunition;
 
-const ammunition =
+  if (
+    DIRECT_HIT_UNIT_TYPES.has(
+      target.type,
+    ) &&
+    DIRECT_FIRE_AMMUNITION.has(
+      ammunition,
+    )
+  ) {
+    return (
+      target.health?.current ??
+      1
+    );
+  }
 
-shooter.fireControl
+  const damageData =
+    AMMUNITION_DAMAGE[
+      ammunition
+    ] ??
+    AMMUNITION_DAMAGE.heat;
 
-?.ammunition;
+  const resistance = clamp(
+    (
+      target.protection
+        ?.explosionResistance ??
+      0
+    ) / 100,
+    0,
+    0.75,
+  );
 
+  const rawDamage =
+    randomBetween(
+      damageData.minimum,
+      damageData.maximum,
+    );
 
-if (
-
-DIRECT_HIT_UNIT_TYPES.has(
-
-target.type,
-
-) &&
-
-DIRECT_FIRE_AMMUNITION.has(
-
-ammunition,
-
-)
-
-) {
-
-return (
-
-target.health?.current ??
-
-1
-
-);
-
+  return Math.max(
+    1,
+    Math.round(
+      rawDamage *
+        (1 - resistance),
+    ),
+  );
 }
-
-
-const damageData =
-
-AMMUNITION_DAMAGE[
-
-ammunition
-
-] ??
-
-AMMUNITION_DAMAGE.heat;
-
-
-const resistance =
-
-clamp(
-
-(
-
-target.protection
-
-?.explosionResistance ??
-
-0
-
-) / 100,
-
-0,
-
-0.75,
-
-);
-
-
-const rawDamage =
-
-randomBetween(
-
-damageData.minimum,
-
-damageData.maximum,
-
-);
-
-
-return Math.max(
-
-1,
-
-Math.round(
-
-rawDamage *
-
-(1 - resistance),
-
-),
-
-);
-
-}
-
 
 function stopDestroyedUnit(unit) {
+  unit.destroyed = true;
+  unit.condition = "격파";
+  unit.command = "행동 불가";
 
-unit.destroyed = true;
+  unit.destination = null;
+  unit.plannedPath = [];
 
-unit.condition = "격파";
+  if (unit.action) {
+    unit.action.type = "idle";
+    unit.action.targetHex = null;
+    unit.action.targetUnitId = null;
+    unit.action.direction = null;
+    unit.action.crewRole = null;
+  }
 
-unit.command = "행동 불가";
+  if (unit.fireControl) {
+    unit.fireControl.state =
+      "stopped";
 
+    unit.fireControl.procedureState =
+      "stopped";
 
-unit.destination = null;
+    unit.fireControl.targetHex =
+      null;
 
-unit.plannedPath = [];
+    unit.fireControl.targetUnitId =
+      null;
 
+    unit.fireControl.loading =
+      false;
 
-if (unit.action) {
+    unit.fireControl.loaded =
+      false;
 
-unit.action.type = "idle";
+    unit.fireControl.loadingAmmunition =
+      null;
 
-unit.action.targetHex = null;
+    unit.fireControl.loadedAmmunition =
+      null;
 
-unit.action.targetUnitId = null;
+    unit.fireControl.loadStartedTurn =
+      null;
 
-unit.action.direction = null;
+    unit.fireControl.loadedTurn =
+      null;
 
-unit.action.crewRole = null;
+    unit.fireControl.aiming =
+      false;
 
+    unit.fireControl.aimStartedTurn =
+      null;
+
+    unit.fireControl.gunnerAutonomous =
+      false;
+  }
+
+  if (unit.turretControl) {
+    unit.turretControl.rotating =
+      false;
+
+    unit.turretControl.warning =
+      "격파";
+  }
 }
-
-
-if (unit.fireControl) {
-
-unit.fireControl.state =
-
-"stopped";
-
-
-unit.fireControl.procedureState =  
-  "stopped";  
-
-unit.fireControl.targetHex =  
-  null;  
-
-unit.fireControl.targetUnitId =  
-  null;  
-
-unit.fireControl.loading =  
-  false;  
-
-unit.fireControl.loaded =  
-  false;  
-
-unit.fireControl.aiming =  
-  false;  
-
-unit.fireControl  
-  .gunnerAutonomous =  
-  false;  
-
-
-
-}
-
-
-if (unit.turretControl) {
-
-unit.turretControl.rotating =
-
-false;
-
-
-unit.turretControl.warning =  
-  "격파";  
-
-
-
-}
-
-}
-
 
 function applyDamage(
-
-target,
-
-damage,
-
-turn,
-
+  target,
+  damage,
+  turn,
 ) {
+  if (
+    !target.health ||
+    damage <= 0
+  ) {
+    return {
+      damage: 0,
+      destroyed: false,
+    };
+  }
 
-if (
+  target.health.current =
+    Math.max(
+      0,
+      target.health.current -
+        damage,
+    );
 
-!target.health ||
+  target.health.lastDamage =
+    damage;
 
-damage <= 0
+  target.health.lastHitTurn =
+    turn;
 
+  const destroyed =
+    target.health.current <= 0;
+
+  if (destroyed) {
+    stopDestroyedUnit(target);
+  } else {
+    target.condition = "피해";
+  }
+
+  return {
+    damage,
+    destroyed,
+  };
+}
+
+function createMainGunSmokeArea(
+  runtimeScenario,
+  shooter,
+  turn,
 ) {
+  const targetHex =
+    shooter.fireControl
+      ?.targetHex;
 
-return {
+  if (!targetHex) {
+    return null;
+  }
 
-damage: 0,
-
-destroyed: false,
-
-};
-
+  return createOrRefreshSmokeArea({
+    runtimeScenario,
+    sourceUnit: shooter,
+    targetHex,
+    turn,
+    sourceType:
+      SMOKE_SOURCES.MAIN_GUN,
+  });
 }
-
-
-target.health.current =
-
-Math.max(
-
-0,
-
-target.health.current -
-
-damage,
-
-);
-
-
-target.health.lastDamage =
-
-damage;
-
-
-target.health.lastHitTurn =
-
-turn;
-
-
-const destroyed =
-
-target.health.current <= 0;
-
-
-if (destroyed) {
-
-stopDestroyedUnit(target);
-
-} else {
-
-target.condition = "피해";
-
-}
-
-
-return {
-
-damage,
-
-destroyed,
-
-};
-
-}
-
-
-function createSmokeArea(
-
-runtimeScenario,
-
-shooter,
-
-turn,
-
-) {
-
-const targetHex =
-
-shooter.fireControl
-
-?.targetHex;
-
-
-if (!targetHex) {
-
-return null;
-
-}
-
-
-if (
-
-!Array.isArray(
-
-runtimeScenario.smokeAreas,
-
-)
-
-) {
-
-runtimeScenario.smokeAreas = [];
-
-}
-
-
-runtimeScenario.smokeAreas =
-
-runtimeScenario.smokeAreas.filter(
-
-(area) =>
-
-area.expiresTurn >= turn,
-
-);
-
-
-const existing =
-
-runtimeScenario.smokeAreas.find(
-
-(area) =>
-
-area.column ===
-
-targetHex.column &&
-
-area.row ===
-
-targetHex.row,
-
-);
-
-
-if (existing) {
-
-existing.startedTurn = turn;
-
-
-existing.expiresTurn =  
-  turn +  
-  SMOKE_DURATION_TURNS;  
-
-existing.sourceUnitId =  
-  shooter.id;  
-
-return existing;  
-
-
-
-}
-
-
-const smokeArea = {
-  id: `smoke-${shooter.id}-${turn}-${targetHex.column}-${targetHex.row}`,
-
-  column: targetHex.column,
-  row: targetHex.row,
-  radius: SMOKE_RADIUS,
-  sourceUnitId: shooter.id,
-  startedTurn: turn,
-  expiresTurn: turn + SMOKE_DURATION_TURNS,
-};
-
-
-runtimeScenario.smokeAreas.push(
-
-smokeArea,
-
-);
-
-
-return smokeArea;
-
-}
-
 
 function resolveSmokeShot(
-
-runtimeScenario,
-
-shooter,
-
-turn,
-
+  runtimeScenario,
+  shooter,
+  turn,
 ) {
+  const smokeArea =
+    createMainGunSmokeArea(
+      runtimeScenario,
+      shooter,
+      turn,
+    );
 
-const smokeArea =
+  if (!smokeArea) {
+    return {
+      hit: false,
+      damage: 0,
+      destroyed: false,
+      targetUnitId: null,
 
-createSmokeArea(
+      smokeCreated: false,
+      smokeAreaId: null,
 
-runtimeScenario,
+      reason:
+        "연막 목표가 지정되지 않았습니다.",
+    };
+  }
 
-shooter,
+  return {
+    hit: true,
+    damage: 0,
+    destroyed: false,
+    targetUnitId: null,
 
-turn,
+    smokeCreated: true,
 
-);
+    smokeAreaId:
+      smokeArea.id,
 
+    targetHex: {
+      column:
+        smokeArea.column,
 
-if (!smokeArea) {
+      row:
+        smokeArea.row,
+    },
 
-return {
-
-hit: false,
-
-damage: 0,
-
-destroyed: false,
-
-targetUnitId: null,
-
-smokeCreated: false,
-
-smokeAreaId: null,
-
-reason:
-
-"연막 목표가 지정되지 않았습니다.",
-
-};
-
+    reason: "연막 형성",
+  };
 }
 
+export function deployVehicleSmoke(
+  runtimeScenario,
+  unit,
+  turn,
+) {
+  if (
+    !runtimeScenario ||
+    !unit ||
+    unit.destroyed
+  ) {
+    return {
+      success: false,
+      reason:
+        "자체연막을 전개할 수 없습니다.",
+    };
+  }
 
-return {
+  const smokeArea =
+    createOrRefreshSmokeArea({
+      runtimeScenario,
+      sourceUnit: unit,
 
-hit: true,
+      targetHex: {
+        column: unit.column,
+        row: unit.row,
+      },
 
-damage: 0,
+      turn,
 
-destroyed: false,
+      sourceType:
+        SMOKE_SOURCES.VEHICLE,
+    });
 
-targetUnitId: null,
+  if (!smokeArea) {
+    return {
+      success: false,
+      reason:
+        "자체연막 영역을 생성하지 못했습니다.",
+    };
+  }
 
+  unit.command =
+    "자체연막 전개";
 
-smokeCreated: true,  
+  return {
+    success: true,
 
-smokeAreaId:  
-  smokeArea.id,  
+    smokeCreated: true,
 
-targetHex: {  
-  column:  
-    smokeArea.column,  
+    smokeAreaId:
+      smokeArea.id,
 
-  row:  
-    smokeArea.row,  
-},  
+    sourceType:
+      SMOKE_SOURCES.VEHICLE,
 
-reason: "연막 형성",  
+    targetHex: {
+      column:
+        smokeArea.column,
 
+      row:
+        smokeArea.row,
+    },
 
+    expiresTurn:
+      smokeArea.expiresTurn,
 
-};
-
+    reason:
+      "자차 위치에 자체연막을 전개했습니다.",
+  };
 }
-
 
 export function removeExpiredSmokeAreas(
-
-runtimeScenario,
-
-turn,
-
+  runtimeScenario,
+  turn,
 ) {
+  if (
+    !Array.isArray(
+      runtimeScenario.smokeAreas,
+    )
+  ) {
+    runtimeScenario.smokeAreas = [];
 
-if (
+    return false;
+  }
 
-!Array.isArray(
+  const previousLength =
+    runtimeScenario.smokeAreas.length;
 
-runtimeScenario.smokeAreas,
+  runtimeScenario.smokeAreas =
+    runtimeScenario.smokeAreas.filter(
+      (area) =>
+        area.expiresTurn >= turn,
+    );
 
-)
-
-) {
-
-runtimeScenario.smokeAreas = [];
-
-return false;
-
+  return (
+    previousLength !==
+    runtimeScenario.smokeAreas.length
+  );
 }
-
-
-const previousLength =
-
-runtimeScenario.smokeAreas.length;
-
-
-runtimeScenario.smokeAreas =
-
-runtimeScenario.smokeAreas.filter(
-
-(area) =>
-
-area.expiresTurn >= turn,
-
-);
-
-
-return (
-
-previousLength !==
-
-runtimeScenario.smokeAreas.length
-
-);
-
-}
-
 
 export function resolveShot(
-
-runtimeScenario,
-
-shooter,
-
-turn,
-
-shotOptions = {},
-
+  runtimeScenario,
+  shooter,
+  turn,
+  shotOptions = {},
 ) {
+  const ammunition =
+    shooter.fireControl
+      ?.ammunition;
 
-const ammunition =
+  if (
+    ammunition === "smoke"
+  ) {
+    return resolveSmokeShot(
+      runtimeScenario,
+      shooter,
+      turn,
+    );
+  }
 
-shooter.fireControl
+  const target =
+    getTargetUnit(
+      runtimeScenario,
+      shooter,
+    );
 
-?.ammunition;
+  if (!target) {
+    return {
+      hit: false,
+      damage: 0,
+      destroyed: false,
+      targetUnitId: null,
 
+      smokeCreated: false,
 
-if (ammunition === "smoke") {
+      reason:
+        "목표 헥스에 유효한 객체가 없습니다.",
+    };
+  }
 
-return resolveSmokeShot(
+  const hitChance =
+    calculateHitChance(
+      shooter,
+      target,
+      shotOptions,
+    );
 
-runtimeScenario,
+  const hit =
+    Math.random() <=
+    hitChance;
 
-shooter,
+  if (!hit) {
+    return {
+      hit: false,
+      damage: 0,
+      destroyed: false,
 
-turn,
+      targetUnitId:
+        target.id,
 
-);
+      hitChance,
+      smokeCreated: false,
+      reason: "빗나감",
+    };
+  }
 
+  const damage =
+    calculateDamage(
+      shooter,
+      target,
+    );
+
+  vehicleSmoke: {
+    remainingUses: 2,
+    maximumUses: 2,
+  }
+
+  const result =
+    applyDamage(
+      target,
+      damage,
+      turn,
+    );
+
+  return {
+    hit: true,
+
+    damage:
+      result.damage,
+
+    destroyed:
+      result.destroyed,
+
+    targetUnitId:
+      target.id,
+
+    hitChance,
+    smokeCreated: false,
+
+    remainingHealth:
+      target.health?.current ??
+      null,
+
+    reason:
+      result.destroyed
+        ? "격파"
+        : "피해",
+  };
 }
-
-
-const target =
-
-getTargetUnit(
-
-runtimeScenario,
-
-shooter,
-
-);
-
-
-if (!target) {
-
-return {
-
-hit: false,
-
-damage: 0,
-
-destroyed: false,
-
-targetUnitId: null,
-
-smokeCreated: false,
-
-reason:
-
-"목표 헥스에 유효한 객체가 없습니다.",
-
-};
-
-}
-
-
-const hitChance =
-
-calculateHitChance(
-
-shooter,
-
-target,
-
-shotOptions,
-
-);
-
-
-const hit =
-
-Math.random() <=
-
-hitChance;
-
-
-if (!hit) {
-
-return {
-
-hit: false,
-
-damage: 0,
-
-destroyed: false,
-
-
-  targetUnitId:  
-    target.id,  
-
-  hitChance,  
-  smokeCreated: false,  
-  reason: "빗나감",  
-};  
-
-
-
-}
-
-
-const damage =
-
-calculateDamage(
-
-shooter,
-
-target,
-
-);
-
-
-const result =
-
-applyDamage(
-
-target,
-
-damage,
-
-turn,
-
-);
-
-
-return {
-
-hit: true,
-
-
-damage:  
-  result.damage,  
-
-destroyed:  
-  result.destroyed,  
-
-targetUnitId:  
-  target.id,  
-
-hitChance,  
-smokeCreated: false,  
-
-remainingHealth:  
-  target.health?.current ??  
-  null,  
-
-reason:  
-  result.destroyed  
-    ? "격파"  
-    : "피해",  
-
-
-
-};
-
-}
-
