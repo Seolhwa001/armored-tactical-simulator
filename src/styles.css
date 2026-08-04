@@ -1,4 +1,4 @@
-/* src/styles.css — 전체 교체, 1~781행 */
+/* src/styles.css — 전체 교체, 예상 1~810행 */
 
 :root {
   color-scheme: dark;
@@ -333,9 +333,34 @@ input:focus-visible {
 
 .command-dock {
   min-width: 0;
+  min-height: 0;
   max-height: 46dvh;
   display: grid;
+  grid-template-rows:
+    minmax(0, 1fr)
+    auto;
+  border-top:
+    1px solid
+    var(--border);
+  background: var(--surface);
+  overflow: hidden;
+  z-index: 30;
+}
+
+.command-dock__scroll {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  align-content: start;
   gap: var(--gap);
+  padding: 8px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+.command-dock__footer {
+  min-width: 0;
   padding:
     8px
     8px
@@ -346,10 +371,22 @@ input:focus-visible {
   border-top:
     1px solid
     var(--border);
-  background: var(--surface);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  z-index: 30;
+  background:
+    rgba(
+      16,
+      26,
+      22,
+      0.98
+    );
+  box-shadow:
+    0 -8px 18px
+    rgba(
+      0,
+      0,
+      0,
+      0.22
+    );
+  z-index: 2;
 }
 
 .unit-summary {
@@ -436,6 +473,7 @@ input:focus-visible {
       minmax(0, 1fr)
     );
   gap: 6px;
+  padding-bottom: 2px;
 }
 
 .command-options > p {
@@ -731,6 +769,7 @@ input:focus-visible {
 }
 
 .execute-turn-button {
+  width: 100%;
   min-height: 58px;
   border:
     1px solid
@@ -913,7 +952,14 @@ input:focus-visible {
 
   .command-dock {
     max-height: 50dvh;
+  }
+
+  .command-dock__scroll {
     gap: 6px;
+    padding-top: 6px;
+  }
+
+  .command-dock__footer {
     padding-top: 6px;
   }
 
