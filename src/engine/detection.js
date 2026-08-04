@@ -1,4 +1,4 @@
-// src/engine/detection.js — 전체 교체, 1~298행
+// src/engine/detection.js — 전체 교체
 
 export const DETECTION_STAGES = Object.freeze({
   HIDDEN: 0,
@@ -9,33 +9,62 @@ export const DETECTION_STAGES = Object.freeze({
 
 const ACTION_RECON = "recon";
 
-const ASPECT_FACTORS = Object.freeze({
-  FRONT: {
-    range: 1,
-    identification: 1,
-  },
+const DEFAULT_VISUAL_RANGE = 7;
+const DEFAULT_IDENTIFICATION_RATIO = 0.48;
+const DEFAULT_OBSERVER_RANGE = 1;
+const DEFAULT_IDENTIFICATION_FACTOR = 1;
 
-  SIDE: {
-    range: 0.72,
-    identification: 0.7,
-  },
+function finiteOrDefault(
+  value,
+  fallback,
+) {
+  return Number.isFinite(value)
+    ? value
+    : fallback;
+}
 
-  REAR: {
-    range: 0.48,
-    identification: 0.45,
-  },
-});
+function nonNegativeOrDefault(
+  value,
+  fallback,
+) {
+  return Math.max(
+    0,
+    finiteOrDefault(
+      value,
+      fallback,
+    ),
+  );
+}
+
+function positiveOrDefault(
+  value,
+  fallback,
+) {
+  return Math.max(
+    0.01,
+    finiteOrDefault(
+      value,
+      fallback,
+    ),
+  );
+}
 
 function normalizeAngle(angle) {
   let normalized =
-    angle % (Math.PI * 2);
+    finiteOrDefault(
+      angle,
+      0,
+    ) %
+    (Math.PI * 2);
 
   if (normalized > Math.PI) {
-    normalized -= Math.PI * 2;
+    normalized -=
+      Math.PI * 2;
   }
 
   if (normalized < -Math.PI) {
-    normalized += Math.PI * 2;
+    normalized +=
+      Math.PI * 2;
   }
 
   return normalized;
@@ -47,7 +76,8 @@ function getAbsoluteAngleDifference(
 ) {
   return Math.abs(
     normalizeAngle(
-      first - second,
+      finiteOrDefault(first, 0) -
+      finiteOrDefault(second, 0),
     ),
   );
 }
@@ -72,8 +102,7 @@ function offsetToAxial(
       (
         row -
         (row & 1)
-      ) /
-        2,
+      ) / 2,
 
     r: row,
   };
@@ -112,113 +141,78 @@ export function getHexDistance(
   ) / 2;
 }
 
-function getAspectFactors(
-  observer,
-  targetDirection,
+function getActiveCrewObservers(
+  unit,
 ) {
-  const hullDirection =
-    observer.hullDirection ??
-    observer.direction ??
-    0;
-
-  const difference =
-    getAbsoluteAngleDifference(
-      targetDirection,
-      hullDirection,
-    );
-
-  if (
-    difference <=
-    Math.PI / 4
-  ) {
-    return ASPECT_FACTORS.FRONT;
-  }
-
-  if (
-    difference <=
-    Math.PI * 0.75
-  ) {
-    return ASPECT_FACTORS.SIDE;
-  }
-
-  return ASPECT_FACTORS.REAR;
-}
-
-function getEnabledCrewObservers(
-  observer,
-) {
-  const crewObservers =
-    observer.crewObservation
+  const observers =
+    unit.crewObservation
       ?.observers;
 
-  if (!crewObservers) {
+  if (!observers) {
     return [];
   }
 
   return Object.entries(
-    crewObservers,
+    observers,
   )
     .filter(
-      ([, crew]) =>
-        crew.enabled !== false,
+      ([, observer]) =>
+        observer?.enabled !== false &&
+        observer?.observing === true,
     )
     .map(
-      ([role, crew]) => ({
+      ([role, observer]) => ({
         role,
-        ...crew,
+        ...observer,
       }),
     );
 }
 
 function evaluateCrewObserver(
   unit,
-  crew,
+  observer,
   targetDirection,
 ) {
   const direction =
-    crew.direction ??
-    unit.hullDirection ??
-    0;
+    finiteOrDefault(
+      observer.direction ??
+        unit.hullDirection,
+      0,
+    );
 
   const fieldOfView =
-    crew.fieldOfView ??
-    Math.PI / 2;
+    positiveOrDefault(
+      observer.fieldOfView,
+      Math.PI / 2,
+    );
 
-  const difference =
+  const directionDifference =
     getAbsoluteAngleDifference(
       targetDirection,
       direction,
     );
 
   if (
-    difference >
+    directionDifference >
     fieldOfView / 2
   ) {
     return null;
   }
 
-  const aspect =
-    getAspectFactors(
-      unit,
-      targetDirection,
-    );
-
   return {
-    role: crew.role,
+    role: observer.role,
 
-    rangeFactor:
-      (
-        crew.rangeFactor ??
-        1
-      ) *
-      aspect.range,
+    range:
+      nonNegativeOrDefault(
+        observer.range,
+        DEFAULT_OBSERVER_RANGE,
+      ),
 
     identificationFactor:
-      (
-        crew.identificationFactor ??
-        1
-      ) *
-      aspect.identification,
+      nonNegativeOrDefault(
+        observer.identificationFactor,
+        DEFAULT_IDENTIFICATION_FACTOR,
+      ),
   };
 }
 
@@ -231,34 +225,56 @@ function evaluateCommanderSight(
       ?.commanderIndependentSight;
 
   if (
-    !sight?.operational
+    !sight?.operational ||
+    sight.active !== true
   ) {
     return null;
   }
 
-  const difference =
+  const direction =
+    finiteOrDefault(
+      sight.direction ??
+        unit.hullDirection,
+      0,
+    );
+
+  const fieldOfView =
+    positiveOrDefault(
+      sight.fieldOfView,
+      Math.PI / 3,
+    );
+
+  const directionDifference =
     getAbsoluteAngleDifference(
       targetDirection,
-      sight.direction ??
-        unit.hullDirection ??
-        0,
+      direction,
     );
 
   if (
-    difference >
-    Math.PI / 3
+    directionDifference >
+    fieldOfView / 2
   ) {
     return null;
   }
 
   return {
     role: "commander-cps",
-    rangeFactor: 1.18,
-    identificationFactor: 1.2,
+
+    range:
+      nonNegativeOrDefault(
+        sight.range,
+        1.18,
+      ),
+
+    identificationFactor:
+      nonNegativeOrDefault(
+        sight.identificationFactor,
+        1.2,
+      ),
   };
 }
 
-function getBestObservation(
+function getObservationCandidates(
   observer,
   enemy,
 ) {
@@ -269,13 +285,13 @@ function getBestObservation(
     );
 
   const candidates =
-    getEnabledCrewObservers(
+    getActiveCrewObservers(
       observer,
     )
-      .map((crew) =>
+      .map((crewObserver) =>
         evaluateCrewObserver(
           observer,
-          crew,
+          crewObserver,
           targetDirection,
         ),
       )
@@ -293,41 +309,73 @@ function getBestObservation(
     );
   }
 
+  return candidates;
+}
+
+function getSensorVisualRange(
+  observer,
+) {
+  const sensorVisualRange =
+    observer.sensors
+      ?.visualRange;
+
   if (
-    candidates.length === 0
+    Number.isFinite(
+      sensorVisualRange,
+    ) &&
+    sensorVisualRange > 0
   ) {
-    const aspect =
-      getAspectFactors(
-        observer,
-        targetDirection,
-      );
-
-    return {
-      role: null,
-      rangeFactor:
-        aspect.range * 0.45,
-
-      identificationFactor:
-        aspect.identification *
-        0.4,
-    };
+    return sensorVisualRange;
   }
 
-  return candidates.reduce(
-    (best, candidate) => {
-      const bestScore =
-        best.rangeFactor +
-        best.identificationFactor;
+  if (
+    Number.isFinite(
+      observer.detectionRange,
+    ) &&
+    observer.detectionRange > 0
+  ) {
+    return observer.detectionRange;
+  }
 
-      const candidateScore =
-        candidate.rangeFactor +
-        candidate.identificationFactor;
+  const legacyDirectionalRange =
+    observer.sensors
+      ?.directionalObservation;
 
-      return candidateScore >
-        bestScore
-        ? candidate
-        : best;
-    },
+  if (
+    Number.isFinite(
+      legacyDirectionalRange,
+    ) &&
+    legacyDirectionalRange > 0
+  ) {
+    return (
+      legacyDirectionalRange /
+      10
+    );
+  }
+
+  return DEFAULT_VISUAL_RANGE;
+}
+
+function getSensorIdentificationRange(
+  observer,
+  visualRange,
+) {
+  const configuredRange =
+    observer.sensors
+      ?.identificationRange;
+
+  if (
+    Number.isFinite(
+      configuredRange,
+    ) &&
+    configuredRange >= 0
+  ) {
+    return configuredRange;
+  }
+
+  return (
+    visualRange *
+    DEFAULT_IDENTIFICATION_RATIO
   );
 }
 
@@ -343,17 +391,120 @@ function getEffectiveConcealment(
 
   const exposure =
     exposureActive
-      ? enemy.temporaryExposure ??
-        0
+      ? nonNegativeOrDefault(
+          enemy.temporaryExposure,
+          0,
+        )
       : 0;
 
   return Math.max(
     0,
-    (
-      enemy.concealment ??
-      0
+    nonNegativeOrDefault(
+      enemy.concealment,
+      0,
     ) - exposure,
   );
+}
+
+function evaluateDetectionCandidate(
+  observer,
+  enemy,
+  distance,
+  turn,
+  observation,
+) {
+  const visualRange =
+    getSensorVisualRange(
+      observer,
+    );
+
+  const identificationRange =
+    getSensorIdentificationRange(
+      observer,
+      visualRange,
+    );
+
+  const reconBonus =
+    observer.action?.type ===
+      ACTION_RECON
+      ? Math.max(
+          2,
+          visualRange * 0.3,
+        )
+      : 0;
+
+  const observerRange =
+    nonNegativeOrDefault(
+      observation.range,
+      DEFAULT_OBSERVER_RANGE,
+    );
+
+  const identificationFactor =
+    nonNegativeOrDefault(
+      observation
+        .identificationFactor,
+      DEFAULT_IDENTIFICATION_FACTOR,
+    );
+
+  const concealmentPenalty =
+    getEffectiveConcealment(
+      enemy,
+      turn,
+    ) / 25;
+
+  const effectiveVisualRange =
+    Math.max(
+      0,
+      (
+        visualRange +
+        reconBonus
+      ) *
+        observerRange -
+        concealmentPenalty,
+    );
+
+  const effectiveIdentificationRange =
+    Math.max(
+      0,
+      (
+        identificationRange +
+        reconBonus *
+          DEFAULT_IDENTIFICATION_RATIO
+      ) *
+        observerRange *
+        identificationFactor -
+        concealmentPenalty,
+    );
+
+  let stage =
+    DETECTION_STAGES.HIDDEN;
+
+  if (
+    distance <=
+    effectiveIdentificationRange
+  ) {
+    stage =
+      DETECTION_STAGES.IDENTIFIED;
+  } else if (
+    distance <=
+    effectiveVisualRange * 0.75
+  ) {
+    stage =
+      DETECTION_STAGES.DETECTED;
+  } else if (
+    distance <=
+    effectiveVisualRange
+  ) {
+    stage =
+      DETECTION_STAGES.CONTACT;
+  }
+
+  return {
+    stage,
+    role: observation.role,
+    effectiveVisualRange,
+    effectiveIdentificationRange,
+  };
 }
 
 function calculateDetectionStage(
@@ -362,79 +513,77 @@ function calculateDetectionStage(
   distance,
   turn,
 ) {
-  const observation =
-    getBestObservation(
+  const candidates =
+    getObservationCandidates(
       observer,
       enemy,
     );
 
-  const sensorRange =
-    (
-      observer.sensors
-        ?.surroundingRecon ??
-      70
-    ) / 10;
-
-  let baseRange =
-    observer.detectionRange ??
-    sensorRange;
-
   if (
-    observer.action?.type ===
-    ACTION_RECON
+    candidates.length === 0
   ) {
-    baseRange += Math.max(
-      2,
-      sensorRange * 0.3,
-    );
+    return {
+      stage:
+        DETECTION_STAGES.HIDDEN,
+
+      observerRole: null,
+    };
   }
 
-  const concealmentPenalty =
-    getEffectiveConcealment(
-      enemy,
-      turn,
-    ) / 25;
-
-  const effectiveRange =
-    Math.max(
-      1,
-      baseRange *
-        observation.rangeFactor -
-        concealmentPenalty,
+  const results =
+    candidates.map(
+      (candidate) =>
+        evaluateDetectionCandidate(
+          observer,
+          enemy,
+          distance,
+          turn,
+          candidate,
+        ),
     );
 
-  const identificationRange =
-    effectiveRange *
-    0.48 *
-    observation
-      .identificationFactor;
+  const best =
+    results.reduce(
+      (
+        bestResult,
+        candidateResult,
+      ) => {
+        if (
+          candidateResult.stage >
+          bestResult.stage
+        ) {
+          return candidateResult;
+        }
 
-  let stage =
-    DETECTION_STAGES.HIDDEN;
+        if (
+          candidateResult.stage <
+          bestResult.stage
+        ) {
+          return bestResult;
+        }
 
-  if (
-    distance <=
-    identificationRange
-  ) {
-    stage =
-      DETECTION_STAGES.IDENTIFIED;
-  } else if (
-    distance <=
-    effectiveRange * 0.75
-  ) {
-    stage =
-      DETECTION_STAGES.DETECTED;
-  } else if (
-    distance <= effectiveRange
-  ) {
-    stage =
-      DETECTION_STAGES.CONTACT;
-  }
+        const candidateScore =
+          candidateResult
+            .effectiveVisualRange +
+          candidateResult
+            .effectiveIdentificationRange;
+
+        const bestScore =
+          bestResult
+            .effectiveVisualRange +
+          bestResult
+            .effectiveIdentificationRange;
+
+        return candidateScore >
+          bestScore
+          ? candidateResult
+          : bestResult;
+      },
+    );
 
   return {
-    stage,
-    observerRole:
-      observation.role,
+    stage: best.stage,
+    observerRole: best.role,
   };
 }
 
@@ -458,11 +607,18 @@ function clearExpiredExposure(
 export function updateDetection(
   runtimeScenario,
   turn =
-    runtimeScenario.turn ??
+    runtimeScenario?.turn ??
     1,
 ) {
+  const units =
+    Array.isArray(
+      runtimeScenario?.units,
+    )
+      ? runtimeScenario.units
+      : [];
+
   const friendlies =
-    runtimeScenario.units.filter(
+    units.filter(
       (unit) =>
         unit.side ===
           "friendly" &&
@@ -470,7 +626,7 @@ export function updateDetection(
     );
 
   const enemies =
-    runtimeScenario.units.filter(
+    units.filter(
       (unit) =>
         unit.side ===
           "enemy" &&
@@ -512,6 +668,9 @@ export function updateDetection(
           (
             result.stage ===
               bestStage &&
+            result.stage !==
+              DETECTION_STAGES
+                .HIDDEN &&
             distance <
               bestDistance
           )
@@ -546,12 +705,13 @@ export function updateDetection(
       bestStage >=
       DETECTION_STAGES.IDENTIFIED;
 
-    enemy.detectionConfidence = [
-      0,
-      35,
-      70,
-      100,
-    ][bestStage];
+    enemy.detectionConfidence =
+      [
+        0,
+        35,
+        70,
+        100,
+      ][bestStage] ?? 0;
 
     enemy.detectedByUnitId =
       bestObserverId;
