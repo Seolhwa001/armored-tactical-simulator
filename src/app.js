@@ -1,4 +1,4 @@
-// src/app.js — 전체 교체
+// src/app.js — 전체 교체, 1~1018행
 
 import {
   advanceUnitMovement,
@@ -7,6 +7,7 @@ import {
 } from "./engine/movement.js";
 
 import {
+  HUNTER_KILLER_STATES,
   getPlayerUnit,
   loadScenario,
   restartScenario,
@@ -28,11 +29,17 @@ import {
 
 import {
   AMMUNITION_TYPES,
-  FIRE_STATES,
+  acceptHunterKillerTarget,
+  beginReloading,
+  registerAdjustedShot,
+  updateFireProcedure,
 } from "./engine/fireControl.js";
 
 import {
-  canTurretFire,
+  removeExpiredSmokeAreas,
+} from "./engine/combat.js";
+
+import {
   getTurretStatus,
 } from "./engine/turretControl.js";
 
@@ -150,13 +157,14 @@ const MOVEMENT_COMMANDS = new Set([
   "normal-move",
   "fire-maneuver",
   "evasive-maneuver",
-  "retreat",
-  "change-position",
 ]);
 
 const TARGET_COMMANDS = new Set([
   ...MOVEMENT_COMMANDS,
   "observation",
+  "crew-observation",
+  "commander-sight",
+  "hunter-killer",
   "recon-by-fire",
   "fire-target",
 ]);
@@ -245,6 +253,7 @@ const state = {
   activeScreen: "menu",
   activeCategory: null,
 
+  playerUnitId: null,
   selectedUnitId: null,
   selectedCommand: null,
   selectedHex: null,
@@ -288,17 +297,34 @@ function getUnits() {
   );
 }
 
+function getPlayerTank() {
+  if (!state.runtimeScenario) {
+    return null;
+  }
+
+  const playerUnit =
+    getPlayerUnit(
+      state.runtimeScenario,
+    );
+
+  if (
+    !playerUnit ||
+    playerUnit.id !==
+      state.playerUnitId
+  ) {
+    return null;
+  }
+
+  return playerUnit;
+}
+
 function getSelectedUnit() {
-  return getUnits().find(
-    (unit) =>
-      unit.id ===
-      state.selectedUnitId,
-  );
+  return getPlayerTank();
 }
 
 function isUnitMoving(unit) {
   return (
-    Boolean(unit.destination) &&
+    Boolean(unit?.destination) &&
     Array.isArray(
       unit.plannedPath,
     ) &&
@@ -311,12 +337,30 @@ function setMessage(message) {
     message;
 }
 
+function getHealthSummary(unit) {
+  if (!unit.health) {
+    return unit.condition;
+  }
+
+  if (unit.destroyed) {
+    return "격파";
+  }
+
+  return (
+    `${unit.condition} / ` +
+    `체력 ${unit.health.current}` +
+    `/${unit.health.maximum}`
+  );
+}
+
 function getTurretSummary(unit) {
   const status =
     getTurretStatus(unit);
 
   if (!status) {
-    return unit.condition;
+    return getHealthSummary(
+      unit,
+    );
   }
 
   const modes = {
@@ -343,6 +387,7 @@ function getTurretSummary(unit) {
         : "포탑 회전 중";
 
   return (
+    `${getHealthSummary(unit)} / ` +
     `${modes[status.mode]} / ` +
     `${stabilizer} / ` +
     position
@@ -355,7 +400,7 @@ function updateSummary() {
 
   elements.selectedUnitLabel.textContent =
     unit?.name ??
-    "없음";
+    "자차 없음";
 
   elements.currentCommandLabel.textContent =
     unit?.command ??
@@ -529,6 +574,9 @@ function initializeScenario(
         )
       : loadScenario();
 
+  state.runtimeScenario.smokeAreas =
+    [];
+
   randomizeUnitPositions();
 
   ensureUnitHexesPassable(
@@ -539,11 +587,17 @@ function initializeScenario(
   state.turn = 1;
   state.runtimeScenario.turn = 1;
 
-  state.selectedUnitId =
+  const playerUnit =
     getPlayerUnit(
       state.runtimeScenario,
-    )?.id ??
+    );
+
+  state.playerUnitId =
+    playerUnit?.id ??
     null;
+
+  state.selectedUnitId =
+    state.playerUnitId;
 
   state.selectedCommand =
     null;
@@ -576,10 +630,7 @@ function initializeScenario(
 
 function centerCamera() {
   const unit =
-    getSelectedUnit() ??
-    getPlayerUnit(
-      state.runtimeScenario,
-    );
+    getSelectedUnit();
 
   if (!unit) {
     return;
@@ -651,6 +702,96 @@ function drawTargetPreview({
   context.restore();
 }
 
+function drawSmokeAreas({
+  context,
+  hexToWorld:
+    convertHex,
+  bounds,
+  isPointVisible,
+}) {
+  const smokeAreas =
+    state.runtimeScenario
+      ?.smokeAreas ??
+    [];
+
+  smokeAreas.forEach(
+    (area) => {
+      const point =
+        convertHex(
+          area.column,
+          area.row,
+        );
+
+      if (
+        !isPointVisible(
+          point,
+          bounds,
+        )
+      ) {
+        return;
+      }
+
+      context.save();
+
+      context.fillStyle =
+        "rgba(170, 181, 175, 0.42)";
+
+      context.strokeStyle =
+        "rgba(218, 225, 220, 0.5)";
+
+      context.lineWidth = 2;
+
+      for (
+        let index = 0;
+        index < 7;
+        index += 1
+      ) {
+        const angle =
+          index *
+          (
+            Math.PI * 2 / 7
+          );
+
+        const distance =
+          index === 0
+            ? 0
+            : HEX_RADIUS * 0.7;
+
+        context.beginPath();
+
+        context.arc(
+          point.x +
+            Math.cos(angle) *
+              distance,
+
+          point.y +
+            Math.sin(angle) *
+              distance,
+
+          HEX_RADIUS * 0.7,
+          0,
+          Math.PI * 2,
+        );
+
+        context.fill();
+      }
+
+      context.beginPath();
+
+      context.arc(
+        point.x,
+        point.y,
+        HEX_RADIUS * 1.5,
+        0,
+        Math.PI * 2,
+      );
+
+      context.stroke();
+      context.restore();
+    },
+  );
+}
+
 function render(
   now = performance.now(),
 ) {
@@ -668,6 +809,10 @@ function render(
 
     drawDynamicLayer:
       (renderer) => {
+        drawSmokeAreas(
+          renderer,
+        );
+
         drawUnits({
           ...renderer,
 
@@ -744,6 +889,14 @@ function handleMovementTarget(
   command,
   hex,
 ) {
+  if (unit.destroyed) {
+    setMessage(
+      "격파된 전차는 이동할 수 없습니다.",
+    );
+
+    return;
+  }
+
   const result =
     planUnitMovement({
       unit,
@@ -779,8 +932,29 @@ function handleMovementTarget(
 
 function handleObservationTarget(
   unit,
+  command,
   hex,
 ) {
+  const direction =
+    calculateDirection(
+      unit,
+      hex,
+    );
+
+  if (
+    typeof command.onTarget ===
+    "function"
+  ) {
+    command.onTarget({
+      unit,
+      hex,
+      direction,
+      turn: state.turn,
+    });
+
+    return;
+  }
+
   setPersistentAction(
     unit,
     {
@@ -788,20 +962,21 @@ function handleObservationTarget(
         UNIT_ACTIONS.OBSERVE,
 
       targetHex: hex,
+      direction,
 
-      direction:
-        calculateDirection(
-          unit,
-          hex,
-        ),
+      crewRole:
+        command.crewRole ??
+        null,
 
-      label: "감시",
+      label:
+        command.label ??
+        "감시",
     },
     state.turn,
   );
 
   setMessage(
-    `감시 방향 지정: ${hex.column}, ${hex.row}`,
+    `${command.label ?? "감시"} 방향 지정: ${hex.column}, ${hex.row}`,
   );
 }
 
@@ -875,6 +1050,53 @@ function handleReconByFireTarget(
   startEffectLoop();
 }
 
+function handleHunterKillerTarget(
+  unit,
+  hex,
+) {
+  const target =
+    getUnits().find(
+      (candidate) =>
+        candidate.side ===
+          "enemy" &&
+        !candidate.destroyed &&
+        candidate.column ===
+          hex.column &&
+        candidate.row ===
+          hex.row &&
+        isUnitVisible(
+          candidate,
+          state.developerMode,
+        ),
+    );
+
+  if (!target) {
+    setMessage(
+      "헌터킬러로 지정할 탐지 표적이 없습니다.",
+    );
+
+    return;
+  }
+
+  if (
+    typeof state.selectedCommand
+      ?.onTarget === "function"
+  ) {
+    state.selectedCommand.onTarget({
+      unit,
+      targetUnit: target,
+      hex,
+      turn: state.turn,
+    });
+
+    return;
+  }
+
+  setMessage(
+    "헌터킬러 표적 지정 기능이 연결되지 않았습니다.",
+  );
+}
+
 function handleHexSelection(hex) {
   if (
     !hex ||
@@ -896,11 +1118,22 @@ function handleHexSelection(hex) {
     row: hex.row,
   };
 
-  if (
-    !unit ||
-    unit.side !== "friendly"
-  ) {
+  if (!unit) {
     render();
+    return;
+  }
+
+  if (unit.destroyed) {
+    state.selectedCommand =
+      null;
+
+    setMessage(
+      "자차가 격파되어 명령을 실행할 수 없습니다.",
+    );
+
+    updateSummary();
+    render();
+
     return;
   }
 
@@ -919,9 +1152,22 @@ function handleHexSelection(hex) {
     );
   } else if (
     command?.id ===
-    "observation"
+      "observation" ||
+    command?.id ===
+      "crew-observation" ||
+    command?.id ===
+      "commander-sight"
   ) {
     handleObservationTarget(
+      unit,
+      command,
+      state.selectedHex,
+    );
+  } else if (
+    command?.id ===
+    "hunter-killer"
+  ) {
+    handleHunterKillerTarget(
       unit,
       state.selectedHex,
     );
@@ -942,6 +1188,7 @@ function handleHexSelection(hex) {
         (candidate) =>
           candidate.side ===
             "enemy" &&
+          !candidate.destroyed &&
           candidate.column ===
             state.selectedHex
               .column &&
@@ -958,10 +1205,6 @@ function handleHexSelection(hex) {
       state.selectedHex,
       enemy?.id ??
         null,
-    );
-
-    setMessage(
-      `사격 목표 지정: ${state.selectedHex.column}, ${state.selectedHex.row}`,
     );
   } else {
     const terrain =
@@ -991,7 +1234,9 @@ function handleHexSelection(hex) {
 
   if (
     state.activeCategory ===
-    "combat"
+      "fire" ||
+    state.activeCategory ===
+      "combat"
   ) {
     firePanel.render();
   }
@@ -1030,6 +1275,39 @@ function worldToHex(
     : null;
 }
 
+function getTappedUnit(
+  worldX,
+  worldY,
+) {
+  return getUnits().find(
+    (unit) => {
+      if (
+        unit.destroyed ||
+        !isUnitVisible(
+          unit,
+          state.developerMode,
+        )
+      ) {
+        return false;
+      }
+
+      const point =
+        hexToWorld(
+          unit.column,
+          unit.row,
+          HEX_RADIUS,
+        );
+
+      return (
+        Math.hypot(
+          worldX - point.x,
+          worldY - point.y,
+        ) <= 30
+      );
+    },
+  );
+}
+
 function handleMapTap(
   clientX,
   clientY,
@@ -1057,54 +1335,32 @@ function handleMapTap(
   };
 
   const tappedUnit =
-    getUnits().find(
-      (unit) => {
-        if (
-          !isUnitVisible(
-            unit,
-            state.developerMode,
-          )
-        ) {
-          return false;
-        }
-
-        const point =
-          hexToWorld(
-            unit.column,
-            unit.row,
-            HEX_RADIUS,
-          );
-
-        return (
-          Math.hypot(
-            world.x - point.x,
-            world.y - point.y,
-          ) <= 30
-        );
-      },
+    getTappedUnit(
+      world.x,
+      world.y,
     );
+
+  const tappedHex =
+    tappedUnit
+      ? {
+          column:
+            tappedUnit.column,
+
+          row:
+            tappedUnit.row,
+        }
+      : worldToHex(
+          world.x,
+          world.y,
+        );
 
   if (
     state.selectedCommand
       ?.needsTarget
   ) {
-    const targetHex =
-      tappedUnit
-        ? {
-            column:
-              tappedUnit.column,
-
-            row:
-              tappedUnit.row,
-          }
-        : worldToHex(
-            world.x,
-            world.y,
-          );
-
-    if (targetHex) {
+    if (tappedHex) {
       handleHexSelection(
-        targetHex,
+        tappedHex,
       );
     }
 
@@ -1112,13 +1368,30 @@ function handleMapTap(
   }
 
   if (tappedUnit) {
-    state.selectedUnitId =
-      tappedUnit.id;
+    const playerUnit =
+      getSelectedUnit();
 
-    state.selectedCommand =
-      null;
-
-    firePanel.reset();
+    if (
+      tappedUnit.id ===
+      playerUnit?.id
+    ) {
+      setMessage(
+        `${playerUnit.name} / ${getHealthSummary(playerUnit)}`,
+      );
+    } else if (
+      tappedUnit.side ===
+      "enemy"
+    ) {
+      setMessage(
+        tappedUnit.identified
+          ? `${tappedUnit.name ?? tappedUnit.id} 접촉`
+          : "미확인 적 접촉",
+      );
+    } else {
+      setMessage(
+        `${tappedUnit.name ?? tappedUnit.id} 위치`,
+      );
+    }
 
     updateSummary();
     render();
@@ -1126,18 +1399,90 @@ function handleMapTap(
     return;
   }
 
-  const hex =
-    worldToHex(
-      world.x,
-      world.y,
+  if (tappedHex) {
+    handleHexSelection(
+      tappedHex,
     );
-
-  if (hex) {
-    handleHexSelection(hex);
   }
 }
 
+function formatShotResult(
+  result,
+) {
+  if (!result) {
+    return "발사";
+  }
+
+  if (result.smokeCreated) {
+    return "연막 형성";
+  }
+
+  if (!result.hit) {
+    return result.reason;
+  }
+
+  if (result.destroyed) {
+    return (
+      `명중 / 피해 ${result.damage} / 격파`
+    );
+  }
+
+  return (
+    `명중 / 피해 ${result.damage}` +
+    (
+      result.remainingHealth !==
+        null &&
+      result.remainingHealth !==
+        undefined
+        ? ` / 잔여 체력 ${result.remainingHealth}`
+        : ""
+    )
+  );
+}
+
+function addAdjustedShotFeedback(
+  adjustedShot,
+) {
+  const {
+    unit,
+    result,
+  } = adjustedShot;
+
+  const targetHex =
+    unit.fireControl
+      ?.targetHex;
+
+  if (!targetHex) {
+    return;
+  }
+
+  addFireEffect(
+    state.effects,
+    unit,
+    targetHex,
+    unit.fireControl.ammunition,
+  );
+
+  setMessage(
+    `쏴-수정: ${formatShotResult(result.shotResult)}`,
+  );
+}
+
 function executeTurn() {
+  const playerUnit =
+    getSelectedUnit();
+
+  if (
+    !playerUnit ||
+    playerUnit.destroyed
+  ) {
+    setMessage(
+      "자차가 격파되어 턴을 실행할 수 없습니다.",
+    );
+
+    return;
+  }
+
   const hiddenBefore =
     new Set(
       getUnits()
@@ -1145,7 +1490,8 @@ function executeTurn() {
           (enemy) =>
             enemy.side ===
               "enemy" &&
-            !enemy.visible,
+            !enemy.visible &&
+            !enemy.destroyed,
         )
         .map(
           (enemy) =>
@@ -1160,7 +1506,8 @@ function executeTurn() {
     .filter(
       (unit) =>
         unit.side ===
-        "friendly",
+          "friendly" &&
+        !unit.destroyed,
     )
     .forEach((unit) => {
       const result =
@@ -1184,65 +1531,58 @@ function executeTurn() {
       }
     });
 
-  processPersistentActions(
-    state.runtimeScenario,
-    state.turn,
-    {
-      movingUnitIds,
-      canFire:
-        canTurretFire,
-    },
-  );
+  const actionResult =
+    processPersistentActions(
+      state.runtimeScenario,
+      state.turn,
+      {
+        movingUnitIds,
+
+        hunterKillerStates:
+          HUNTER_KILLER_STATES,
+
+        updateFireProcedure,
+        beginReloading,
+        registerAdjustedShot,
+        acceptHunterKillerTarget,
+      },
+    );
 
   getUnits()
     .filter(
       (unit) =>
         unit.side ===
-        "friendly",
-    )
-    .forEach((unit) => {
-      if (
+          "friendly" &&
+        !unit.destroyed &&
         unit.action?.type ===
           UNIT_ACTIONS.RECON_BY_FIRE &&
-        unit.action.targetHex
-      ) {
-        addFireEffect(
-          state.effects,
-          unit,
-          unit.action.targetHex,
-          AMMUNITION_TYPES.HEAT,
-          {
-            reconByFire: true,
-          },
-        );
-      }
-
-      if (
-        unit.fireControl?.state ===
-          FIRE_STATES.ADJUST &&
-        unit.fireControl.targetHex &&
-        canTurretFire(
-          unit,
-          {
-            moving:
-              movingUnitIds.has(
-                unit.id,
-              ),
-          },
-        ).allowed
-      ) {
-        addFireEffect(
-          state.effects,
-          unit,
-          unit.fireControl.targetHex,
-          unit.fireControl.ammunition,
-        );
-      }
+        unit.action.targetHex,
+    )
+    .forEach((unit) => {
+      addFireEffect(
+        state.effects,
+        unit,
+        unit.action.targetHex,
+        AMMUNITION_TYPES.HEAT,
+        {
+          reconByFire: true,
+        },
+      );
     });
+
+  actionResult.adjustedShots
+    .forEach(
+      addAdjustedShotFeedback,
+    );
 
   state.turn += 1;
   state.runtimeScenario.turn =
     state.turn;
+
+  removeExpiredSmokeAreas(
+    state.runtimeScenario,
+    state.turn,
+  );
 
   updateDetection(
     state.runtimeScenario,
@@ -1254,6 +1594,7 @@ function executeTurn() {
       (enemy) =>
         enemy.side ===
           "enemy" &&
+        !enemy.destroyed &&
         enemy.visible &&
         hiddenBefore.has(
           enemy.id,
@@ -1287,7 +1628,9 @@ function executeTurn() {
 
   if (
     state.activeCategory ===
-    "combat"
+      "fire" ||
+    state.activeCategory ===
+      "combat"
   ) {
     firePanel.render();
   } else if (
@@ -1298,9 +1641,14 @@ function executeTurn() {
     );
   }
 
-  setMessage(
-    `TURN ${state.turn - 1} 처리 완료`,
-  );
+  if (
+    actionResult.adjustedShots
+      .length === 0
+  ) {
+    setMessage(
+      `TURN ${state.turn - 1} 처리 완료`,
+    );
+  }
 
   startEffectLoop();
 }
@@ -1312,10 +1660,15 @@ function handleCommandSelection(
   const unit =
     getSelectedUnit();
 
-  if (
-    !unit ||
-    unit.side !== "friendly"
-  ) {
+  if (!unit) {
+    return;
+  }
+
+  if (unit.destroyed) {
+    setMessage(
+      "격파된 전차는 명령을 수행할 수 없습니다.",
+    );
+
     return;
   }
 
@@ -1324,6 +1677,22 @@ function handleCommandSelection(
   ) {
     commandPanel.activateRecon();
     refreshFogAndRender();
+    return;
+  }
+
+  if (
+    typeof command.execute ===
+    "function" &&
+    !command.needsTarget
+  ) {
+    command.execute({
+      unit,
+      turn: state.turn,
+    });
+
+    updateSummary();
+    render();
+
     return;
   }
 
@@ -1450,6 +1819,10 @@ commandPanel =
 
     getSelectedUnit,
 
+    getRuntimeScenario:
+      () =>
+        state.runtimeScenario,
+
     getTurn:
       () => state.turn,
 
@@ -1473,6 +1846,10 @@ firePanel =
 
     getSelectedUnit,
 
+    getRuntimeScenario:
+      () =>
+        state.runtimeScenario,
+
     getTurn:
       () => state.turn,
 
@@ -1480,9 +1857,23 @@ firePanel =
 
     onBeginTargetSelection:
       () => {
+        const unit =
+          getSelectedUnit();
+
+        if (
+          !unit ||
+          unit.destroyed
+        ) {
+          setMessage(
+            "사격 목표를 지정할 수 없습니다.",
+          );
+
+          return;
+        }
+
         state.selectedCommand = {
           id: "fire-target",
-          label: "사격명령",
+          label: "표적 지정",
           needsTarget: true,
         };
       },
@@ -1562,6 +1953,7 @@ bindApplicationEvents({
         });
 
       if (
+        category === "fire" ||
         category === "combat"
       ) {
         firePanel.render();
@@ -1586,7 +1978,9 @@ bindApplicationEvents({
       mapRenderer
         .invalidateTerrain();
 
-      mapRenderer.invalidateFog();
+      mapRenderer
+        .invalidateFog();
+
       render();
     },
 
