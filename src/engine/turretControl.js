@@ -1,4 +1,4 @@
-// src/engine/turretControl.js — 새 파일
+// src/engine/turretControl.js — 전체 교체
 
 export const TURRET_MODES = Object.freeze({
   NORMAL: "normal",
@@ -79,6 +79,50 @@ function moveAngleToward(
       Math.sign(difference) *
         maximumStep,
   );
+}
+
+function createIdleAction() {
+  return {
+    type: "idle",
+    targetHex: null,
+    targetUnitId: null,
+    direction: null,
+    startedTurn: null,
+    persistent: true,
+  };
+}
+
+function stopTargetTracking(unit) {
+  if (
+    unit.action?.type ===
+      "observe" ||
+    unit.action?.type ===
+      "recon-by-fire" ||
+    unit.action?.type ===
+      "fire"
+  ) {
+    unit.action =
+      createIdleAction();
+  }
+
+  if (!unit.fireControl) {
+    return;
+  }
+
+  unit.fireControl.state =
+    "stopped";
+
+  unit.fireControl.targetHex =
+    null;
+
+  unit.fireControl.targetUnitId =
+    null;
+
+  unit.fireControl.gunnerAutonomous =
+    false;
+
+  unit.fireControl.loading =
+    false;
 }
 
 export function createTurretControl(
@@ -245,12 +289,19 @@ export function unlockTurretFromHull(
   return true;
 }
 
-export function lockTurretToHull(
+export function commandMainGunStow(
   unit,
+  turn = 1,
 ) {
   if (!unit.turretControl) {
-    return false;
+    return {
+      success: false,
+      reason:
+        "포탑 제어 기능이 없습니다.",
+    };
   }
+
+  stopTargetTracking(unit);
 
   unit.turretControl.lockedToHull =
     true;
@@ -266,7 +317,29 @@ export function lockTurretToHull(
   unit.turretControl.rotating =
     !unit.turretControl.aligned;
 
-  return true;
+  unit.action = {
+    type: "turret-stow",
+    targetHex: null,
+    targetUnitId: null,
+
+    direction:
+      unit.turretControl
+        .targetDirection,
+
+    startedTurn: turn,
+    persistent: true,
+  };
+
+  unit.command =
+    "주포 정위치";
+
+  return {
+    success: true,
+
+    completed:
+      unit.turretControl
+        .aligned,
+  };
 }
 
 export function isTurretAligned(
@@ -282,6 +355,7 @@ export function isTurretAligned(
     Math.abs(
       getAngleDifference(
         unit.turretDirection ?? 0,
+
         unit.turretControl
           .targetDirection ??
           unit.turretDirection ??
