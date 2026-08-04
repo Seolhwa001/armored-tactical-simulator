@@ -1,5 +1,3 @@
-// src/engine/combat.js — 전체 교체
-
 const DIRECT_FIRE_AMMUNITION = new Set([
   "apfsds",
   "heat",
@@ -129,7 +127,8 @@ function createOrRefreshSmokeArea({
     );
 
   if (existing) {
-    existing.startedTurn = turn;
+    existing.startedTurn =
+      turn;
 
     existing.expiresTurn =
       turn +
@@ -150,16 +149,22 @@ function createOrRefreshSmokeArea({
       `${sourceUnit.id}-${turn}-` +
       `${targetHex.column}-${targetHex.row}`,
 
-    column: targetHex.column,
-    row: targetHex.row,
-    radius: SMOKE_RADIUS,
+    column:
+      targetHex.column,
+
+    row:
+      targetHex.row,
+
+    radius:
+      SMOKE_RADIUS,
 
     sourceUnitId:
       sourceUnit.id,
 
     sourceType,
 
-    startedTurn: turn,
+    startedTurn:
+      turn,
 
     expiresTurn:
       turn +
@@ -229,22 +234,25 @@ function calculateHitChance(
     ] ??
     AMMUNITION_DAMAGE.heat;
 
-  const aimStability = clamp(
-    shotOptions.aimStability ??
-      shooter.fireControl
-        ?.aimStability ??
-      1,
-    0,
-    1,
-  );
-
-  const movingPenalty = clamp(
-    shotOptions
-      .movingFirePenalty ??
+  const aimStability =
+    clamp(
+      shotOptions
+        .aimStability ??
+        shooter.fireControl
+          ?.aimStability ??
+        1,
       0,
-    0,
-    0.9,
-  );
+      1,
+    );
+
+  const movingPenalty =
+    clamp(
+      shotOptions
+        .movingFirePenalty ??
+        0,
+      0,
+      0.9,
+    );
 
   const concealmentPenalty =
     clamp(
@@ -294,15 +302,16 @@ function calculateDamage(
     ] ??
     AMMUNITION_DAMAGE.heat;
 
-  const resistance = clamp(
-    (
-      target.protection
-        ?.explosionResistance ??
-      0
-    ) / 100,
-    0,
-    0.75,
-  );
+  const resistance =
+    clamp(
+      (
+        target.protection
+          ?.explosionResistance ??
+        0
+      ) / 100,
+      0,
+      0.75,
+    );
 
   const rawDamage =
     randomBetween(
@@ -328,11 +337,20 @@ function stopDestroyedUnit(unit) {
   unit.plannedPath = [];
 
   if (unit.action) {
-    unit.action.type = "idle";
-    unit.action.targetHex = null;
-    unit.action.targetUnitId = null;
-    unit.action.direction = null;
-    unit.action.crewRole = null;
+    unit.action.type =
+      "idle";
+
+    unit.action.targetHex =
+      null;
+
+    unit.action.targetUnitId =
+      null;
+
+    unit.action.direction =
+      null;
+
+    unit.action.crewRole =
+      null;
   }
 
   if (unit.fireControl) {
@@ -417,9 +435,12 @@ function applyDamage(
     target.health.current <= 0;
 
   if (destroyed) {
-    stopDestroyedUnit(target);
+    stopDestroyedUnit(
+      target,
+    );
   } else {
-    target.condition = "피해";
+    target.condition =
+      "피해";
   }
 
   return {
@@ -443,7 +464,8 @@ function createMainGunSmokeArea(
 
   return createOrRefreshSmokeArea({
     runtimeScenario,
-    sourceUnit: shooter,
+    sourceUnit:
+      shooter,
     targetHex,
     turn,
     sourceType:
@@ -497,7 +519,8 @@ function resolveSmokeShot(
         smokeArea.row,
     },
 
-    reason: "연막 형성",
+    reason:
+      "연막 형성",
   };
 }
 
@@ -518,14 +541,40 @@ export function deployVehicleSmoke(
     };
   }
 
+  const vehicleSmoke =
+    unit.vehicleSmoke;
+
+  if (!vehicleSmoke) {
+    return {
+      success: false,
+      reason:
+        "이 차량에는 자체연막 기능이 없습니다.",
+    };
+  }
+
+  if (
+    vehicleSmoke.remainingUses <= 0
+  ) {
+    return {
+      success: false,
+      reason:
+        "사용 가능한 자체연막이 없습니다.",
+    };
+  }
+
   const smokeArea =
     createOrRefreshSmokeArea({
       runtimeScenario,
-      sourceUnit: unit,
+
+      sourceUnit:
+        unit,
 
       targetHex: {
-        column: unit.column,
-        row: unit.row,
+        column:
+          unit.column,
+
+        row:
+          unit.row,
       },
 
       turn,
@@ -541,6 +590,16 @@ export function deployVehicleSmoke(
         "자체연막 영역을 생성하지 못했습니다.",
     };
   }
+
+  vehicleSmoke.remainingUses =
+    Math.max(
+      0,
+      vehicleSmoke.remainingUses -
+        1,
+    );
+
+  vehicleSmoke.lastDeployedTurn =
+    turn;
 
   unit.command =
     "자체연막 전개";
@@ -567,8 +626,16 @@ export function deployVehicleSmoke(
     expiresTurn:
       smokeArea.expiresTurn,
 
+    remainingUses:
+      vehicleSmoke.remainingUses,
+
+    maximumUses:
+      vehicleSmoke.maximumUses,
+
     reason:
-      "자차 위치에 자체연막을 전개했습니다.",
+      `자차 위치에 자체연막을 전개했습니다. ` +
+      `남은 횟수 ${vehicleSmoke.remainingUses}` +
+      `/${vehicleSmoke.maximumUses}`,
   };
 }
 
@@ -577,11 +644,14 @@ export function removeExpiredSmokeAreas(
   turn,
 ) {
   if (
+    !runtimeScenario ||
     !Array.isArray(
       runtimeScenario.smokeAreas,
     )
   ) {
-    runtimeScenario.smokeAreas = [];
+    if (runtimeScenario) {
+      runtimeScenario.smokeAreas = [];
+    }
 
     return false;
   }
@@ -663,7 +733,8 @@ export function resolveShot(
 
       hitChance,
       smokeCreated: false,
-      reason: "빗나감",
+      reason:
+        "빗나감",
     };
   }
 
@@ -672,11 +743,6 @@ export function resolveShot(
       shooter,
       target,
     );
-
-  vehicleSmoke: {
-    remainingUses: 2,
-    maximumUses: 2,
-  }
 
   const result =
     applyDamage(
