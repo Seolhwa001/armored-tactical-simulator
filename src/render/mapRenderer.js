@@ -583,22 +583,14 @@ camera,
 developerMode,
 
 }) {
-
 const signature =
-
-createCameraSignature(
-
-width,
-
-height,
-
-camera,
-
-ratio,
-
-) +
-
-:${developerMode};
+  createCameraSignature(
+    width,
+    height,
+    camera,
+    ratio,
+  ) +
+  `:${developerMode}`;
 
 
 if (  
@@ -718,20 +710,13 @@ drawFogLayer,
 }) {
 
 const signature =
-
-createCameraSignature(
-
-width,
-
-height,
-
-camera,
-
-ratio,
-
-) +
-
-:${developerMode};
+  createCameraSignature(
+    width,
+    height,
+    camera,
+    ratio,
+  ) +
+  `:${developerMode}`;
 
 
 if (  
