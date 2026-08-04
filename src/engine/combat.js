@@ -651,31 +651,14 @@ return existing;
 
 
 const smokeArea = {
+  id: `smoke-${shooter.id}-${turn}-${targetHex.column}-${targetHex.row}`,
 
-id:
-
-id:
-  `smoke-${shooter.id}-${turn}-${targetHex.column}-${targetHex.row}`,
-
-column:  
-  targetHex.column,  
-
-row:  
-  targetHex.row,  
-
-radius: SMOKE_RADIUS,  
-
-sourceUnitId:  
-  shooter.id,  
-
-startedTurn: turn,  
-
-expiresTurn:  
-  turn +  
-  SMOKE_DURATION_TURNS,  
-
-
-
+  column: targetHex.column,
+  row: targetHex.row,
+  radius: SMOKE_RADIUS,
+  sourceUnitId: shooter.id,
+  startedTurn: turn,
+  expiresTurn: turn + SMOKE_DURATION_TURNS,
 };
 
 
