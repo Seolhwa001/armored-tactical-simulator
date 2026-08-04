@@ -1,4 +1,12 @@
-// src/controllers/turnController.js — 신규 파일, 예상 1~230행
+// ============================================================
+// ATS PROJECT
+// File      : src/controllers/turnController.js
+// Sprint    : 3.9.1
+// Revision  : R2
+// Build     : 2026-08-05
+// Type      : FULL REPLACEMENT
+// Purpose   : Turn execution and persistent-action processing
+// ============================================================
 
 export function createTurnController({
   state,
@@ -60,7 +68,7 @@ export function createTurnController({
     }
 
     if (!result.hit) {
-      return result.reason;
+      return result.reason ?? "빗나감";
     }
 
     if (result.destroyed) {
@@ -79,24 +87,42 @@ export function createTurnController({
     );
   }
 
+  function getAdjustedShotAmmunition(result) {
+    return (
+      result?.ammunition ??
+      result?.shotResult?.ammunition ??
+      ammunitionTypes.HEAT
+    );
+  }
+
   function addAdjustedShotFeedback(
     adjustedShot,
   ) {
-    const { unit, result } =
-      adjustedShot;
+    const {
+      unit,
+      result,
+    } = adjustedShot;
 
     const targetHex =
       unit.fireControl?.targetHex;
 
-    if (!targetHex) {
+    if (
+      !targetHex ||
+      !result?.success
+    ) {
       return;
     }
+
+    const firedAmmunition =
+      getAdjustedShotAmmunition(
+        result,
+      );
 
     addFireEffect(
       state.effects,
       unit,
       targetHex,
-      unit.fireControl.ammunition,
+      firedAmmunition,
     );
 
     setMessage(
@@ -115,14 +141,18 @@ export function createTurnController({
             !enemy.visible &&
             !enemy.destroyed,
         )
-        .map((enemy) => enemy.id),
+        .map(
+          (enemy) =>
+            enemy.id,
+        ),
     );
   }
 
   function advanceFriendlyMovement(
     processedTurn,
   ) {
-    const movingUnitIds = new Set();
+    const movingUnitIds =
+      new Set();
 
     getUnits()
       .filter(
@@ -136,19 +166,22 @@ export function createTurnController({
             unit,
             turn: processedTurn,
 
-            hexToWorld: (
+            hexToWorld(
               column,
               row,
-            ) =>
-              hexToWorld(
+            ) {
+              return hexToWorld(
                 column,
                 row,
                 hexRadius,
-              ),
+              );
+            },
           });
 
         if (result.moved) {
-          movingUnitIds.add(unit.id);
+          movingUnitIds.add(
+            unit.id,
+          );
         }
       });
 
@@ -159,18 +192,28 @@ export function createTurnController({
     processedTurn,
     movingUnitIds,
   ) {
-    return processPersistentActions(
-      state.runtimeScenario,
-      processedTurn,
-      {
-        movingUnitIds,
-        hunterKillerStates,
-        updateFireProcedure,
-        beginReloading,
-        registerAdjustedShot,
-        acceptHunterKillerTarget,
-      },
-    );
+    const result =
+      processPersistentActions(
+        state.runtimeScenario,
+        processedTurn,
+        {
+          movingUnitIds,
+          hunterKillerStates,
+          updateFireProcedure,
+          beginReloading,
+          registerAdjustedShot,
+          acceptHunterKillerTarget,
+        },
+      );
+
+    return {
+      adjustedShots:
+        Array.isArray(
+          result?.adjustedShots,
+        )
+          ? result.adjustedShots
+          : [],
+    };
   }
 
   function addReconByFireEffects() {
@@ -199,20 +242,25 @@ export function createTurnController({
   function addNewContactEffects(
     hiddenBefore,
   ) {
-    const newContacts = getUnits().filter(
-      (enemy) =>
-        enemy.side === "enemy" &&
-        !enemy.destroyed &&
-        enemy.visible &&
-        hiddenBefore.has(enemy.id),
-    );
-
-    newContacts.forEach((enemy) => {
-      addContactEffect(
-        state.effects,
-        enemy,
+    const newContacts =
+      getUnits().filter(
+        (enemy) =>
+          enemy.side === "enemy" &&
+          !enemy.destroyed &&
+          enemy.visible &&
+          hiddenBefore.has(
+            enemy.id,
+          ),
       );
-    });
+
+    newContacts.forEach(
+      (enemy) => {
+        addContactEffect(
+          state.effects,
+          enemy,
+        );
+      },
+    );
 
     return newContacts;
   }
@@ -234,7 +282,8 @@ export function createTurnController({
   }
 
   function executeTurn() {
-    const playerUnit = getPlayerTank();
+    const playerUnit =
+      getPlayerTank();
 
     if (
       !playerUnit ||
@@ -254,7 +303,8 @@ export function createTurnController({
       };
     }
 
-    const processedTurn = state.turn;
+    const processedTurn =
+      state.turn;
 
     const hiddenBefore =
       collectInitiallyHiddenEnemies();
@@ -277,6 +327,7 @@ export function createTurnController({
     );
 
     state.turn += 1;
+
     state.runtimeScenario.turn =
       state.turn;
 
@@ -295,19 +346,23 @@ export function createTurnController({
         hiddenBefore,
       );
 
-    const fogChanged = updateFog(
-      state.fog,
-      state.terrain,
-      getUnits(),
-    );
+    const fogChanged =
+      updateFog(
+        state.fog,
+        state.terrain,
+        getUnits(),
+      );
 
     if (fogChanged) {
       mapRenderer.invalidateFog();
     }
 
-    updateTurnLabel(state.turn);
+    updateTurnLabel(
+      state.turn,
+    );
 
-    state.selectedCommand = null;
+    state.selectedCommand =
+      null;
 
     updateSummary();
     refreshPanels();
@@ -327,8 +382,10 @@ export function createTurnController({
     return {
       success: true,
       processedTurn,
+
       adjustedShots:
         actionResult.adjustedShots,
+
       newContacts,
       movingUnitIds,
       message,
