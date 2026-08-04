@@ -1,4 +1,4 @@
-// src/app.js — 전체 교체, 예상 1~560행
+// src/app.js — 전체 교체
 
 import {
   advanceUnitMovement,
@@ -40,6 +40,7 @@ import {
 } from "./engine/fireControl.js";
 
 import {
+  deployVehicleSmoke,
   removeExpiredSmokeAreas,
 } from "./engine/combat.js";
 
@@ -494,17 +495,22 @@ function render(
     drawDynamicLayer(renderer) {
       drawSmokeAreas({
         ...renderer,
+
         smokeAreas:
           state.runtimeScenario
             ?.smokeAreas ?? [],
-        hexRadius: HEX_RADIUS,
+
+        hexRadius:
+          HEX_RADIUS,
       });
 
       drawUnits({
         ...renderer,
         units: getUnits(),
+
         selectedUnitId:
           state.selectedUnitId,
+
         developerMode:
           state.developerMode,
       });
@@ -580,6 +586,24 @@ commandPanel = createCommandPanel({
 
   onCancelMovement:
     cancelUnitMovement,
+
+  onDeployVehicleSmoke(unit) {
+    const result =
+      deployVehicleSmoke(
+        state.runtimeScenario,
+        unit,
+        state.turn,
+      );
+
+    if (!result.success) {
+      return result;
+    }
+
+    updateSummary();
+    render();
+
+    return result;
+  },
 });
 
 firePanel = createFirePanel({
@@ -652,16 +676,22 @@ scenarioController =
   createScenarioController({
     state,
     mapRenderer,
+
     terrainTypes:
       TERRAIN_TYPES,
+
     detectionStages:
       DETECTION_STAGES,
+
     mapColumns:
       MAP_COLUMNS,
+
     mapRows:
       MAP_ROWS,
+
     hexRadius:
       HEX_RADIUS,
+
     loadScenario,
     restartScenario,
     getPlayerUnit,
@@ -675,6 +705,7 @@ scenarioController =
     updateFog,
     hexToWorld,
     updateSummary,
+
     turnLabel:
       elements.turnLabel,
   });
@@ -682,19 +713,27 @@ scenarioController =
 mapInputController =
   createMapInputController({
     state,
+
     canvas:
       elements.canvas,
+
     mapRenderer,
+
     terrainTypes:
       TERRAIN_TYPES,
+
     movementCommands:
       MOVEMENT_COMMANDS,
+
     unitActions:
       UNIT_ACTIONS,
+
     ammunitionTypes:
       AMMUNITION_TYPES,
+
     hexRadius:
       HEX_RADIUS,
+
     hexToWorld,
     getSelectedUnit,
     getHealthSummary,
@@ -719,14 +758,19 @@ turnController =
   createTurnController({
     state,
     mapRenderer,
+
     hexRadius:
       HEX_RADIUS,
+
     ammunitionTypes:
       AMMUNITION_TYPES,
+
     unitActions:
       UNIT_ACTIONS,
+
     hunterKillerStates:
       HUNTER_KILLER_STATES,
+
     hexToWorld,
     advanceUnitMovement,
     processPersistentActions,
@@ -773,7 +817,10 @@ function showScreen(name) {
   if (!menu) {
     requestAnimationFrame(() => {
       mapRenderer.resize();
-      scenarioController.centerCamera();
+
+      scenarioController
+        .centerCamera();
+
       render();
     });
   }
@@ -784,6 +831,7 @@ function handleAction(action) {
     action === "open-battle"
   ) {
     showScreen("battle");
+
     return;
   }
 
@@ -791,6 +839,7 @@ function handleAction(action) {
     action === "return-menu"
   ) {
     showScreen("menu");
+
     return;
   }
 
@@ -849,6 +898,7 @@ function handleAction(action) {
       1.8,
       Math.max(
         0.55,
+
         state.camera.zoom +
           (
             action === "zoom-in"
