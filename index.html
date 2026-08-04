@@ -1,4 +1,4 @@
-<!-- index.html — 전체 교체, 1~343행 -->
+<!-- index.html — 전체 교체, 예상 1~374행 -->
 
 <!doctype html>
 <html lang="ko">
@@ -26,69 +26,70 @@
 
   <link
     rel="stylesheet"
-    href="./src/styles.css?v=0.3.9"
+    href="./src/styles.css?v=0.3.9.1"
   >
 
-<script type="module">
-  const errorBox = document.createElement("pre");
+  <script type="module">
+    const startButton = document.querySelector(
+      '[data-action="open-battle"]',
+    );
 
-  Object.assign(errorBox.style, {
-    position: "fixed",
-    inset: "12px",
-    zIndex: "99999",
-    display: "none",
-    padding: "14px",
-    overflow: "auto",
-    whiteSpace: "pre-wrap",
-    background: "#240b0b",
-    color: "#ffb4b4",
-    border: "1px solid #ff6b6b",
-    borderRadius: "10px",
-  });
+    const errorBox = document.createElement("pre");
 
-  document.body.append(errorBox);
+    Object.assign(errorBox.style, {
+      position: "fixed",
+      inset: "12px",
+      zIndex: "99999",
+      display: "none",
+      padding: "14px",
+      overflow: "auto",
+      whiteSpace: "pre-wrap",
+      background: "#240b0b",
+      color: "#ffb4b4",
+      border: "1px solid #ff6b6b",
+      borderRadius: "10px",
+    });
 
-  function showError(file, error) {
-    errorBox.style.display = "block";
-    errorBox.textContent =
-      `ATS 실행 오류\n\n파일: ${file}\n\n` +
-      (error?.stack ?? error?.message ?? String(error));
-  }
+    document.body.append(errorBox);
 
-  const modules = [
-    "./src/engine/scenario.js",
-    "./src/engine/movement.js",
-    "./src/engine/detection.js",
-    "./src/engine/turretControl.js",
-    "./src/engine/combat.js",
-    "./src/engine/actions.js",
-    "./src/engine/fireControl.js",
-    "./src/engine/scenarioRuntime.js",
-    "./src/engine/terrainGenerator.js",
-    "./src/render/mapRenderer.js",
-    "./src/render/fogRenderer.js",
-    "./src/render/effectRenderer.js",
-    "./src/render/unitRenderer.js",
-    "./src/ui/commandPanel.js",
-    "./src/ui/firePanel.js",
-    "./src/ui/eventBindings.js",
-  ];
+    function showError(file, error) {
+      errorBox.style.display = "block";
 
-  for (const file of modules) {
-    try {
-      await import(`${file}?diagnostic=0.3.9`);
-    } catch (error) {
-      showError(file, error);
-      throw error;
+      errorBox.textContent =
+        `ATS 실행 오류\n\n파일: ${file}\n\n` +
+        (
+          error?.stack ??
+          error?.message ??
+          String(error)
+        );
     }
-  }
 
-  try {
-    await import("./src/app.js?diagnostic=0.3.9");
-  } catch (error) {
-    showError("./src/app.js", error);
-  }
-</script>
+    try {
+      await import(
+        "./src/app.js?v=0.3.9.1"
+      );
+
+      if (startButton) {
+        startButton.disabled = false;
+        startButton.textContent =
+          "전투 화면 시작";
+      }
+
+      document.documentElement.dataset
+        .appReady = "true";
+    } catch (error) {
+      showError(
+        "./src/app.js",
+        error,
+      );
+
+      if (startButton) {
+        startButton.disabled = true;
+        startButton.textContent =
+          "실행 오류";
+      }
+    }
+  </script>
 </head>
 
 <body>
@@ -104,7 +105,7 @@
       <section class="menu-screen">
         <header class="menu-screen__header">
           <p class="eyebrow">
-            ATS v0.3.9
+            ATS v0.3.9.1
           </p>
 
           <h1 id="game-title">
@@ -121,11 +122,13 @@
           aria-label="게임 메뉴"
         >
           <button
+            id="open-battle-button"
             class="menu-button menu-button--primary"
             type="button"
             data-action="open-battle"
+            disabled
           >
-            전투 화면 시작
+            초기화 중…
           </button>
 
           <button
@@ -247,85 +250,89 @@
           class="command-dock"
           aria-label="자차 전투 명령"
         >
-          <div class="unit-summary">
-            <div>
-              <span>
-                현재 조작
-              </span>
+          <div class="command-dock__scroll">
+            <div class="unit-summary">
+              <div>
+                <span>
+                  현재 조작
+                </span>
 
-              <strong id="selected-unit-label">
-                P0 자차
-              </strong>
+                <strong id="selected-unit-label">
+                  P0 자차
+                </strong>
+              </div>
+
+              <div>
+                <span>
+                  현재 명령
+                </span>
+
+                <strong id="current-command-label">
+                  대기
+                </strong>
+              </div>
+
+              <div>
+                <span>
+                  상태
+                </span>
+
+                <strong id="unit-condition-label">
+                  정상
+                </strong>
+              </div>
             </div>
 
-            <div>
-              <span>
-                현재 명령
-              </span>
+            <div
+              class="command-categories command-categories--vehicle"
+              aria-label="명령 분야"
+            >
+              <button
+                class="command-category"
+                type="button"
+                data-command-category="hull"
+              >
+                차체
+              </button>
 
-              <strong id="current-command-label">
-                대기
-              </strong>
+              <button
+                class="command-category"
+                type="button"
+                data-command-category="turret"
+              >
+                포탑
+              </button>
+
+              <button
+                class="command-category"
+                type="button"
+                data-command-category="fire"
+              >
+                사격
+              </button>
             </div>
 
-            <div>
-              <span>
-                상태
-              </span>
-
-              <strong id="unit-condition-label">
-                정상
-              </strong>
+            <div
+              id="command-options"
+              class="command-options"
+              aria-live="polite"
+            >
+              <p>
+                차체, 포탑 또는 사격 명령 분야를 선택하세요.
+              </p>
             </div>
           </div>
 
-          <div
-            class="command-categories command-categories--vehicle"
-            aria-label="명령 분야"
-          >
+          <footer class="command-dock__footer">
             <button
-              class="command-category"
+              id="execute-turn-button"
+              class="execute-turn-button"
               type="button"
-              data-command-category="hull"
+              data-action="execute-turn"
             >
-              차체
+              명령 실행 / 다음 턴
             </button>
-
-            <button
-              class="command-category"
-              type="button"
-              data-command-category="turret"
-            >
-              포탑
-            </button>
-
-            <button
-              class="command-category"
-              type="button"
-              data-command-category="fire"
-            >
-              사격
-            </button>
-          </div>
-
-          <div
-            id="command-options"
-            class="command-options"
-            aria-live="polite"
-          >
-            <p>
-              차체, 포탑 또는 사격 명령 분야를 선택하세요.
-            </p>
-          </div>
-
-          <button
-            id="execute-turn-button"
-            class="execute-turn-button"
-            type="button"
-            data-action="execute-turn"
-          >
-            명령 실행 / 다음 턴
-          </button>
+          </footer>
         </section>
       </section>
     </main>
@@ -418,7 +425,7 @@
           </p>
 
           <p>
-            현재 단계: Sprint 3.9
+            현재 단계: Sprint 3.9.1
           </p>
         </div>
       </form>
