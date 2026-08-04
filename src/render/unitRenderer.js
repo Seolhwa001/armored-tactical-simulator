@@ -1,4 +1,4 @@
-// src/render/unitRenderer.js — 새 파일
+// src/render/unitRenderer.js — 전체 교체, 1~681행
 
 import {
   DETECTION_STAGES,
@@ -8,6 +8,55 @@ import {
 import {
   UNIT_ACTIONS,
 } from "../engine/actions.js";
+
+const CREW_OBSERVATION_STYLES = Object.freeze({
+  commander: {
+    stroke:
+      "rgba(255, 218, 128, 0.9)",
+
+    fill:
+      "rgba(255, 218, 128, 0.1)",
+
+    radiusFactor: 12,
+  },
+
+  gunner: {
+    stroke:
+      "rgba(128, 194, 255, 0.9)",
+
+    fill:
+      "rgba(128, 194, 255, 0.1)",
+
+    radiusFactor: 10,
+  },
+
+  driver: {
+    stroke:
+      "rgba(153, 221, 161, 0.9)",
+
+    fill:
+      "rgba(153, 221, 161, 0.1)",
+
+    radiusFactor: 7,
+  },
+
+  loader: {
+    stroke:
+      "rgba(211, 165, 255, 0.9)",
+
+    fill:
+      "rgba(211, 165, 255, 0.1)",
+
+    radiusFactor: 8,
+  },
+});
+
+const CPS_VISIBLE_STATES = new Set([
+  "target-found",
+  "designating",
+  "handoff",
+  "tracking",
+]);
 
 function drawSelection(
   context,
@@ -40,6 +89,9 @@ function drawTankIcon(
   unit,
   point,
 ) {
+  const destroyed =
+    unit.destroyed === true;
+
   context.save();
 
   context.translate(
@@ -51,13 +103,22 @@ function drawTankIcon(
     unit.hullDirection ?? 0,
   );
 
+  context.globalAlpha =
+    destroyed
+      ? 0.55
+      : 1;
+
   context.fillStyle =
-    unit.side === "friendly"
-      ? "#73957e"
-      : "#a35f59";
+    destroyed
+      ? "#333735"
+      : unit.side === "friendly"
+        ? "#73957e"
+        : "#a35f59";
 
   context.strokeStyle =
-    "#edf4ef";
+    destroyed
+      ? "#9b9f9c"
+      : "#edf4ef";
 
   context.lineWidth = 1.5;
 
@@ -113,13 +174,22 @@ function drawTankIcon(
       0,
   );
 
+  context.globalAlpha =
+    destroyed
+      ? 0.55
+      : 1;
+
   context.fillStyle =
-    unit.side === "friendly"
-      ? "#9ec2aa"
-      : "#c98178";
+    destroyed
+      ? "#454947"
+      : unit.side === "friendly"
+        ? "#9ec2aa"
+        : "#c98178";
 
   context.strokeStyle =
-    "#edf4ef";
+    destroyed
+      ? "#9b9f9c"
+      : "#edf4ef";
 
   context.beginPath();
 
@@ -145,6 +215,7 @@ function drawTankIcon(
 
 function drawObserverIcon(
   context,
+  unit,
   point,
 ) {
   context.save();
@@ -154,11 +225,20 @@ function drawObserverIcon(
     point.y,
   );
 
+  context.globalAlpha =
+    unit.destroyed
+      ? 0.5
+      : 1;
+
   context.fillStyle =
-    "#8c4f45";
+    unit.destroyed
+      ? "#373737"
+      : "#8c4f45";
 
   context.strokeStyle =
-    "#ffd2c4";
+    unit.destroyed
+      ? "#989898"
+      : "#ffd2c4";
 
   context.lineWidth = 2;
 
@@ -226,13 +306,25 @@ function drawObserverIcon(
 
 function drawAtgmIcon(
   context,
+  unit,
   point,
 ) {
+  context.save();
+
+  context.globalAlpha =
+    unit.destroyed
+      ? 0.5
+      : 1;
+
   context.fillStyle =
-    "#9d514e";
+    unit.destroyed
+      ? "#373737"
+      : "#9d514e";
 
   context.strokeStyle =
-    "#ffd1c6";
+    unit.destroyed
+      ? "#989898"
+      : "#ffd1c6";
 
   context.lineWidth = 2;
 
@@ -270,6 +362,7 @@ function drawAtgmIcon(
   );
 
   context.stroke();
+  context.restore();
 }
 
 function drawContactIcon(
@@ -292,6 +385,58 @@ function drawContactIcon(
   );
 }
 
+function drawDestroyedMarker(
+  context,
+  point,
+) {
+  context.save();
+
+  context.strokeStyle =
+    "#ff8d7f";
+
+  context.lineWidth = 3;
+
+  context.beginPath();
+
+  context.moveTo(
+    point.x - 15,
+    point.y - 15,
+  );
+
+  context.lineTo(
+    point.x + 15,
+    point.y + 15,
+  );
+
+  context.moveTo(
+    point.x + 15,
+    point.y - 15,
+  );
+
+  context.lineTo(
+    point.x - 15,
+    point.y + 15,
+  );
+
+  context.stroke();
+
+  context.fillStyle =
+    "rgba(28, 31, 29, 0.8)";
+
+  context.beginPath();
+
+  context.arc(
+    point.x,
+    point.y,
+    5,
+    0,
+    Math.PI * 2,
+  );
+
+  context.fill();
+  context.restore();
+}
+
 function drawUnitLabel(
   context,
   unit,
@@ -299,9 +444,11 @@ function drawUnitLabel(
   developerMode,
 ) {
   context.fillStyle =
-    unit.side === "friendly"
-      ? "#edf4ef"
-      : "#ffd2c8";
+    unit.destroyed
+      ? "#b7b7b7"
+      : unit.side === "friendly"
+        ? "#edf4ef"
+        : "#ffd2c8";
 
   context.font =
     "800 10px system-ui";
@@ -309,88 +456,153 @@ function drawUnitLabel(
   context.textAlign =
     "center";
 
-  const label =
+  const baseLabel =
     unit.side === "enemy" &&
     !developerMode &&
     !unit.identified
       ? "미확인"
-      : unit.id;
+      : unit.name ??
+        unit.id;
+
+  const label =
+    unit.destroyed
+      ? `${baseLabel} [격파]`
+      : baseLabel;
 
   context.fillText(
     label,
     point.x,
-    point.y + 31,
+    point.y + 33,
   );
 }
 
-function drawObservationArea(
+function canDisplayHealth(
+  unit,
+  developerMode,
+) {
+  if (
+    !unit.health ||
+    unit.destroyed
+  ) {
+    return false;
+  }
+
+  if (
+    unit.side === "friendly" ||
+    developerMode
+  ) {
+    return true;
+  }
+
+  return (
+    unit.detectionStage >=
+    DETECTION_STAGES.IDENTIFIED
+  );
+}
+
+function drawHealthBar(
   context,
   unit,
   point,
-  hexRadius,
+  developerMode,
 ) {
   if (
-    unit.side !== "friendly"
-  ) {
-    return;
-  }
-
-  if (
-    unit.action?.type ===
-    UNIT_ACTIONS.RECON
-  ) {
-    context.save();
-
-    context.fillStyle =
-      "rgba(112, 196, 151, 0.10)";
-
-    context.strokeStyle =
-      "rgba(150, 230, 184, 0.7)";
-
-    context.lineWidth = 2;
-
-    context.setLineDash([
-      7,
-      5,
-    ]);
-
-    context.beginPath();
-
-    context.arc(
-      point.x,
-      point.y,
-      hexRadius * 10,
-      0,
-      Math.PI * 2,
-    );
-
-    context.fill();
-    context.stroke();
-    context.restore();
-  }
-
-  if (
-    unit.action?.type !==
-      UNIT_ACTIONS.OBSERVE ||
-    !Number.isFinite(
-      unit.action.direction,
+    !canDisplayHealth(
+      unit,
+      developerMode,
     )
   ) {
     return;
   }
 
-  const radius =
-    hexRadius * 13;
+  const maximumHealth =
+    Math.max(
+      1,
+      unit.health.maximum ??
+        1,
+    );
+
+  const currentHealth =
+    Math.max(
+      0,
+      Math.min(
+        maximumHealth,
+        unit.health.current ??
+          maximumHealth,
+      ),
+    );
+
+  const healthRatio =
+    currentHealth /
+    maximumHealth;
+
+  const width = 30;
+  const height = 4;
 
   context.save();
 
   context.fillStyle =
-    "rgba(105, 206, 153, 0.13)";
+    "rgba(11, 14, 12, 0.85)";
+
+  context.fillRect(
+    point.x - width / 2,
+    point.y + 18,
+    width,
+    height,
+  );
+
+  context.fillStyle =
+    healthRatio > 0.5
+      ? "#88c795"
+      : healthRatio > 0.25
+        ? "#d4b468"
+        : "#d56f65";
+
+  context.fillRect(
+    point.x - width / 2,
+    point.y + 18,
+    width * healthRatio,
+    height,
+  );
 
   context.strokeStyle =
-    "rgba(146, 235, 185, 0.8)";
+    "rgba(235, 242, 237, 0.65)";
+
+  context.lineWidth = 1;
+
+  context.strokeRect(
+    point.x - width / 2,
+    point.y + 18,
+    width,
+    height,
+  );
+
+  context.restore();
+}
+
+function drawObservationCone(
+  context,
+  point,
+  direction,
+  fieldOfView,
+  radius,
+  strokeStyle,
+  fillStyle,
+  lineDash = [],
+) {
+  context.save();
+
+  context.fillStyle =
+    fillStyle;
+
+  context.strokeStyle =
+    strokeStyle;
 
   context.lineWidth = 2;
+
+  context.setLineDash(
+    lineDash,
+  );
 
   context.beginPath();
 
@@ -403,16 +615,237 @@ function drawObservationArea(
     point.x,
     point.y,
     radius,
-    unit.action.direction -
-      Math.PI / 4,
-    unit.action.direction +
-      Math.PI / 4,
+    direction -
+      fieldOfView / 2,
+    direction +
+      fieldOfView / 2,
   );
 
   context.closePath();
   context.fill();
   context.stroke();
   context.restore();
+}
+
+function isCpsDisplayActive(
+  unit,
+) {
+  const observation =
+    unit.crewObservation;
+
+  const sight =
+    observation
+      ?.commanderIndependentSight;
+
+  const hunterKiller =
+    observation?.hunterKiller;
+
+  if (
+    unit.destroyed ||
+    !sight?.operational
+  ) {
+    return false;
+  }
+
+  if (
+    sight.tracking ||
+    sight.locked
+  ) {
+    return true;
+  }
+
+  if (
+    CPS_VISIBLE_STATES.has(
+      hunterKiller?.state,
+    )
+  ) {
+    return true;
+  }
+
+  return (
+    unit.command ===
+      "전차장 CPS 감시" ||
+    unit.command ===
+      "헌터킬러 표적지향"
+  );
+}
+
+function drawCrewObservationAreas(
+  context,
+  unit,
+  point,
+  hexRadius,
+) {
+  if (
+    unit.side !== "friendly" ||
+    unit.destroyed ||
+    !unit.crewObservation ||
+    unit.action?.type !==
+      UNIT_ACTIONS.OBSERVE
+  ) {
+    return;
+  }
+
+  const observers =
+    unit.crewObservation
+      .observers ??
+    {};
+
+  Object.entries(
+    observers,
+  ).forEach(
+    ([crewRole, observer]) => {
+      const style =
+        CREW_OBSERVATION_STYLES[
+          crewRole
+        ];
+
+      if (
+        !style ||
+        observer.enabled === false ||
+        !Number.isFinite(
+          observer.direction,
+        )
+      ) {
+        return;
+      }
+
+      drawObservationCone(
+        context,
+        point,
+        observer.direction,
+
+        observer.fieldOfView ??
+          Math.PI / 2,
+
+        hexRadius *
+          style.radiusFactor,
+
+        style.stroke,
+        style.fill,
+      );
+    },
+  );
+}
+
+function drawCpsObservationArea(
+  context,
+  unit,
+  point,
+  hexRadius,
+) {
+  if (
+    unit.side !== "friendly" ||
+    !isCpsDisplayActive(unit)
+  ) {
+    return;
+  }
+
+  const sight =
+    unit.crewObservation
+      ?.commanderIndependentSight;
+
+  if (
+    !Number.isFinite(
+      sight?.direction,
+    )
+  ) {
+    return;
+  }
+
+  drawObservationCone(
+    context,
+    point,
+    sight.direction,
+    Math.PI / 3,
+    hexRadius * 14,
+
+    "rgba(255, 240, 145, 0.95)",
+
+    "rgba(255, 240, 145, 0.08)",
+
+    [8, 5],
+  );
+}
+
+function drawReconArea(
+  context,
+  unit,
+  point,
+  hexRadius,
+) {
+  if (
+    unit.side !== "friendly" ||
+    unit.destroyed ||
+    unit.action?.type !==
+      UNIT_ACTIONS.RECON
+  ) {
+    return;
+  }
+
+  context.save();
+
+  context.fillStyle =
+    "rgba(112, 196, 151, 0.10)";
+
+  context.strokeStyle =
+    "rgba(150, 230, 184, 0.7)";
+
+  context.lineWidth = 2;
+
+  context.setLineDash([
+    7,
+    5,
+  ]);
+
+  context.beginPath();
+
+  context.arc(
+    point.x,
+    point.y,
+    hexRadius * 10,
+    0,
+    Math.PI * 2,
+  );
+
+  context.fill();
+  context.stroke();
+  context.restore();
+}
+
+function drawObservationAreas(
+  context,
+  unit,
+  point,
+  hexRadius,
+) {
+  if (
+    unit.side !== "friendly" ||
+    unit.destroyed
+  ) {
+    return;
+  }
+
+  drawReconArea(
+    context,
+    unit,
+    point,
+    hexRadius,
+  );
+
+  drawCrewObservationAreas(
+    context,
+    unit,
+    point,
+    hexRadius,
+  );
+
+  drawCpsObservationArea(
+    context,
+    unit,
+    point,
+    hexRadius,
+  );
 }
 
 function drawTurretDirections(
@@ -422,7 +855,8 @@ function drawTurretDirections(
 ) {
   if (
     !unit.turretControl ||
-    unit.side !== "friendly"
+    unit.side !== "friendly" ||
+    unit.destroyed
   ) {
     return;
   }
@@ -505,6 +939,7 @@ function drawDestination(
 ) {
   if (
     unit.side !== "friendly" ||
+    unit.destroyed ||
     !unit.destination ||
     !Array.isArray(
       unit.plannedPath,
@@ -570,7 +1005,10 @@ function drawFireTarget(
   const target =
     unit.fireControl?.targetHex;
 
-  if (!target) {
+  if (
+    !target ||
+    unit.destroyed
+  ) {
     return;
   }
 
@@ -638,7 +1076,8 @@ export function drawUnits({
   units
     .filter(
       (unit) =>
-        unit.side === "friendly",
+        unit.side ===
+        "friendly",
     )
     .forEach((unit) => {
       drawDestination(
@@ -679,7 +1118,7 @@ export function drawUnits({
       return;
     }
 
-    drawObservationArea(
+    drawObservationAreas(
       context,
       unit,
       point,
@@ -688,7 +1127,8 @@ export function drawUnits({
 
     if (
       unit.id ===
-      selectedUnitId
+        selectedUnitId &&
+      !unit.destroyed
     ) {
       drawSelection(
         context,
@@ -700,7 +1140,8 @@ export function drawUnits({
       unit.side === "enemy" &&
       !developerMode &&
       unit.detectionStage ===
-        DETECTION_STAGES.CONTACT
+        DETECTION_STAGES.CONTACT &&
+      !unit.destroyed
     ) {
       drawContactIcon(
         context,
@@ -712,6 +1153,7 @@ export function drawUnits({
     ) {
       drawObserverIcon(
         context,
+        unit,
         point,
       );
     } else if (
@@ -720,6 +1162,7 @@ export function drawUnits({
     ) {
       drawAtgmIcon(
         context,
+        unit,
         point,
       );
     } else {
@@ -730,11 +1173,25 @@ export function drawUnits({
       );
     }
 
-    drawTurretDirections(
-      context,
-      unit,
-      point,
-    );
+    if (unit.destroyed) {
+      drawDestroyedMarker(
+        context,
+        point,
+      );
+    } else {
+      drawTurretDirections(
+        context,
+        unit,
+        point,
+      );
+
+      drawHealthBar(
+        context,
+        unit,
+        point,
+        developerMode,
+      );
+    }
 
     drawUnitLabel(
       context,
@@ -743,4 +1200,4 @@ export function drawUnits({
       developerMode,
     );
   });
-}
+    }
