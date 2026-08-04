@@ -1,4 +1,4 @@
-// src/engine/actions.js — 전체 교체, 1~323행
+// src/engine/actions.js — 전체 교체, 1~394행
 
 import {
   DETECTION_STAGES,
@@ -22,7 +22,15 @@ export const UNIT_ACTIONS = Object.freeze({
   TURRET_STOW: "turret-stow",
 });
 
-const FIRE_READY_STATE = "ready";
+const FIRE_STATES = Object.freeze({
+  ADJUST: "adjust",
+});
+
+const FIRE_PROCEDURE_STATES = Object.freeze({
+  READY_TO_FIRE: "ready-to-fire",
+  FIRED: "fired",
+  ADJUSTING: "adjusting",
+});
 
 function getDirectionBetween(
   observer,
@@ -321,6 +329,7 @@ export function designateHunterKillerTarget(
 
 function clearHunterKillerTarget(
   hunterKiller,
+  sight,
   hunterKillerStates,
 ) {
   hunterKiller.state =
@@ -334,43 +343,20 @@ function clearHunterKillerTarget(
 
   hunterKiller.handedOffTargetUnitId =
     null;
-}
 
-function handOffHunterKillerTarget(
-  unit,
-  target,
-  hunterKiller,
-  hunterKillerStates,
-) {
-  hunterKiller.state =
-    hunterKillerStates.HANDOFF;
-
-  hunterKiller.handedOffTargetUnitId =
-    target.id;
-
-  if (!unit.fireControl) {
-    return;
+  if (sight) {
+    sight.targetUnitId = null;
+    sight.locked = false;
+    sight.tracking = false;
   }
-
-  unit.fireControl.targetUnitId =
-    target.id;
-
-  unit.fireControl.targetHex = {
-    column: target.column,
-    row: target.row,
-  };
-
-  unit.fireControl.state =
-    FIRE_READY_STATE;
-
-  unit.fireControl.loading =
-    false;
 }
 
-export function updateHunterKiller(
+function updateHunterKiller(
   unit,
   runtimeScenario,
+  turn,
   hunterKillerStates,
+  acceptHunterKillerTarget,
 ) {
   const observation =
     unit.crewObservation;
@@ -404,14 +390,9 @@ export function updateHunterKiller(
   if (!target) {
     clearHunterKillerTarget(
       hunterKiller,
+      sight,
       hunterKillerStates,
     );
-
-    if (sight) {
-      sight.targetUnitId = null;
-      sight.locked = false;
-      sight.tracking = false;
-    }
 
     return;
   }
@@ -445,12 +426,22 @@ export function updateHunterKiller(
       return;
     }
 
-    handOffHunterKillerTarget(
-      unit,
-      target,
-      hunterKiller,
-      hunterKillerStates,
-    );
+    const accepted =
+      acceptHunterKillerTarget?.(
+        unit,
+        target,
+        turn,
+      ) ?? false;
+
+    if (!accepted) {
+      return;
+    }
+
+    hunterKiller.state =
+      hunterKillerStates.HANDOFF;
+
+    hunterKiller.handedOffTargetUnitId =
+      target.id;
 
     return;
   }
@@ -589,20 +580,26 @@ function updateReconByFireAction(
 }
 
 function updateAdjustedFireAction(
+  runtimeScenario,
   unit,
   turn,
   moving,
-  canFire,
+  fireControlFunctions,
 ) {
   if (
     unit.action?.type !==
       UNIT_ACTIONS.FIRE ||
     unit.fireControl?.state !==
-      "adjust" ||
+      FIRE_STATES.ADJUST ||
     !unit.fireControl.targetHex
   ) {
-    return;
+    return null;
   }
+
+  const {
+    beginReloading,
+    registerAdjustedShot,
+  } = fireControlFunctions;
 
   const direction =
     getDirectionBetween(
@@ -615,22 +612,56 @@ function updateAdjustedFireAction(
     direction,
   );
 
-  const permission =
-    canFire(
+  const procedureState =
+    unit.fireControl
+      .procedureState;
+
+  if (
+    procedureState ===
+      FIRE_PROCEDURE_STATES
+        .ADJUSTING ||
+    procedureState ===
+      FIRE_PROCEDURE_STATES.FIRED
+  ) {
+    beginReloading?.(
       unit,
+      turn,
+    );
+
+    return null;
+  }
+
+  if (
+    procedureState !==
+      FIRE_PROCEDURE_STATES
+        .READY_TO_FIRE
+  ) {
+    return null;
+  }
+
+  const result =
+    registerAdjustedShot?.(
+      runtimeScenario,
+      unit,
+      turn,
       {
         moving,
       },
     );
 
-  if (!permission.allowed) {
-    return;
+  if (!result?.success) {
+    return null;
   }
 
-  unit.fireControl.roundsFired += 1;
-  unit.fireControl.lastFiredTurn =
-    turn;
-  unit.fireControl.loading = true;
+  beginReloading?.(
+    unit,
+    turn,
+  );
+
+  return {
+    unit,
+    result,
+  };
 }
 
 export function processPersistentActions(
@@ -642,15 +673,25 @@ export function processPersistentActions(
     options.movingUnitIds ??
     new Set();
 
-  const canFire =
-    options.canFire ??
-    (() => ({
-      allowed: false,
-    }));
-
   const hunterKillerStates =
     options.hunterKillerStates ??
     null;
+
+  const fireControlFunctions = {
+    updateFireProcedure:
+      options.updateFireProcedure,
+
+    beginReloading:
+      options.beginReloading,
+
+    registerAdjustedShot:
+      options.registerAdjustedShot,
+
+    acceptHunterKillerTarget:
+      options.acceptHunterKillerTarget,
+  };
+
+  const adjustedShots = [];
 
   runtimeScenario.units
     .filter(
@@ -665,25 +706,20 @@ export function processPersistentActions(
           unit.id,
         );
 
-      if (hunterKillerStates) {
-        updateHunterKiller(
-          unit,
-          runtimeScenario,
-          hunterKillerStates,
-        );
-      }
+      updateHunterKiller(
+        unit,
+        runtimeScenario,
+        turn,
+        hunterKillerStates,
+
+        fireControlFunctions
+          .acceptHunterKillerTarget,
+      );
 
       updateReconByFireAction(
         runtimeScenario,
         unit,
         turn,
-      );
-
-      updateAdjustedFireAction(
-        unit,
-        turn,
-        moving,
-        canFire,
       );
 
       updateTurretRotation(
@@ -692,5 +728,30 @@ export function processPersistentActions(
           moving,
         },
       );
+
+      fireControlFunctions
+        .updateFireProcedure?.(
+          unit,
+          turn,
+        );
+
+      const adjustedShot =
+        updateAdjustedFireAction(
+          runtimeScenario,
+          unit,
+          turn,
+          moving,
+          fireControlFunctions,
+        );
+
+      if (adjustedShot) {
+        adjustedShots.push(
+          adjustedShot,
+        );
+      }
     });
-}
+
+  return {
+    adjustedShots,
+  };
+  }
