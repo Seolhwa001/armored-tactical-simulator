@@ -1,5 +1,3 @@
-// src/engine/runtime/unitFactory.js — 새 파일, 전체 코드
-
 import { DETECTION_STAGES } from "../detection.js";
 import { createFireControl } from "../fireControl.js";
 import { createTurretControl } from "../turretControl.js";
@@ -8,6 +6,38 @@ import { createCrewObservation } from "./crewFactory.js";
 import { createRuntimeHealth } from "./healthFactory.js";
 import { createRuntimeProtection } from "./protectionFactory.js";
 import { createRuntimeSensors } from "./sensorFactory.js";
+
+function createVehicleSmokeState({
+  unitData,
+  isTank,
+}) {
+  if (!isTank) {
+    return null;
+  }
+
+  const maximumUses =
+    unitData.vehicleSmoke?.maximumUses ??
+    unitData.vehicleSmokeUses ??
+    2;
+
+  const remainingUses =
+    unitData.vehicleSmoke?.remainingUses ??
+    maximumUses;
+
+  return {
+    remainingUses: Math.max(
+      0,
+      remainingUses,
+    ),
+
+    maximumUses: Math.max(
+      0,
+      maximumUses,
+    ),
+
+    lastDeployedTurn: null,
+  };
+}
 
 export function createRuntimeUnit(unitData) {
   const friendly =
@@ -52,49 +82,69 @@ export function createRuntimeUnit(unitData) {
     lastKnownPosition: null,
 
     detectionConfidence:
-      friendly ? 100 : 0,
+      friendly
+        ? 100
+        : 0,
 
     baseConcealment,
-    concealment: baseConcealment,
+    concealment:
+      baseConcealment,
 
     temporaryExposure: 0,
     exposedUntilTurn: null,
 
     hatchState:
-      isTank ? "open" : null,
+      isTank
+        ? "open"
+        : null,
 
-    sensors: createRuntimeSensors({
-      unitData,
-      unitType: unitData.type,
-    }),
+    vehicleSmoke:
+      createVehicleSmokeState({
+        unitData,
+        isTank,
+      }),
 
-    crewObservation: isTank
-      ? createCrewObservation({
-          hullDirection,
-        })
-      : null,
+    sensors:
+      createRuntimeSensors({
+        unitData,
+        unitType:
+          unitData.type,
+      }),
 
-    action: createIdleAction({
-      startedTurn: 1,
-    }),
+    crewObservation:
+      isTank
+        ? createCrewObservation({
+            hullDirection,
+          })
+        : null,
 
-    fireControl: isTank
-      ? createFireControl()
-      : null,
+    action:
+      createIdleAction(),
 
-    turretControl: isTank
-      ? createTurretControl(unitData)
-      : null,
+    fireControl:
+      isTank
+        ? createFireControl()
+        : null,
+
+    turretControl:
+      isTank
+        ? createTurretControl(
+            unitData,
+          )
+        : null,
 
     protection:
       createRuntimeProtection({
         unitData,
-        unitType: unitData.type,
+        unitType:
+          unitData.type,
       }),
 
-    health: createRuntimeHealth({
-      unitData,
-      unitType: unitData.type,
-    }),
+    health:
+      createRuntimeHealth({
+        unitData,
+        unitType:
+          unitData.type,
+      }),
   };
 }
