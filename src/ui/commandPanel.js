@@ -706,18 +706,19 @@ export function createCommandPanel({
         },
       ),
 
-      createCommanderSightCommand()
-        ? createCommandButton(
-            createCommanderSightCommand(),
-            onCommandSelected,
-            {
-              disabled:
-                unit.crewObservation
-                  ?.commanderIndependentSight
-                  ?.operational !== true,
-            },
-          )
-        : null,
+      createCommandButton(
+        createHunterKillerCommand(),
+        onCommandSelected,
+        {
+          disabled:
+            unit.crewObservation
+               ?.hunterKiller
+               ?.enabled !== true ||
+            unit.crewObservation
+               ?.commanderIndependentSight
+               ?.operational !== true,
+        },
+      ),
 
       createAutomaticObservationStatus(
         "포수",
