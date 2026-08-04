@@ -3,6 +3,7 @@
 import { UNIT_ACTIONS } from "../engine/constants/actionConstants.js";
 
 import {
+  canAssignCrewObservation,
   designateHunterKillerTarget,
   setCommanderSightDirection,
   setCrewObservationDirection,
@@ -68,6 +69,12 @@ const TURRET_MODE_LABELS = Object.freeze({
   [TURRET_MODES.MANUAL]: "수동구동",
 });
 
+const LOADER_MODE_LABELS = Object.freeze({
+  "open-hatch": "해치 개방 감시",
+  periscope: "측면 잠망경 감시",
+  loading: "장전 중 제한 감시",
+});
+
 function createButton(label, options = {}) {
   const button = document.createElement("button");
 
@@ -117,8 +124,14 @@ function createStatusRow(label, value) {
   return row;
 }
 
-function createCommandButton(command, onSelect) {
+function createCommandButton(
+  command,
+  onSelect,
+  options = {},
+) {
   return createButton(command.label, {
+    disabled: options.disabled,
+
     onClick: (event) => {
       onSelect(
         command,
@@ -126,6 +139,91 @@ function createCommandButton(command, onSelect) {
       );
     },
   });
+}
+
+function getObserver(
+  unit,
+  crewRole,
+) {
+  return (
+    unit.crewObservation
+      ?.observers?.[crewRole] ??
+    null
+  );
+}
+
+function getObserverStateLabel(
+  unit,
+  crewRole,
+) {
+  const observer =
+    getObserver(
+      unit,
+      crewRole,
+    );
+
+  if (!observer) {
+    return "사용 불가";
+  }
+
+  if (
+    observer.enabled === false ||
+    observer.observing !== true
+  ) {
+    return "감시 중지";
+  }
+
+  if (
+    crewRole ===
+    CREW_ROLES.GUNNER
+  ) {
+    return "포탑 방향 자동 감시";
+  }
+
+  if (
+    crewRole ===
+    CREW_ROLES.DRIVER
+  ) {
+    return "차체 전방 자동 감시";
+  }
+
+  if (
+    crewRole ===
+    CREW_ROLES.LOADER
+  ) {
+    return (
+      LOADER_MODE_LABELS[
+        observer.observationMode
+      ] ??
+      "감시 중"
+    );
+  }
+
+  return "육안 감시";
+}
+
+function getCommanderSightLabel(unit) {
+  const sight =
+    unit.crewObservation
+      ?.commanderIndependentSight;
+
+  if (!sight?.operational) {
+    return "고장";
+  }
+
+  if (sight.active !== true) {
+    return "미사용";
+  }
+
+  if (sight.tracking) {
+    return sight.locked
+      ? "표적 추적 완료"
+      : "표적 추적 회전 중";
+  }
+
+  return sight.locked
+    ? "독립 감시 정렬 완료"
+    : "독립 감시 회전 중";
 }
 
 function createTurretStatusPanel(unit) {
@@ -203,27 +301,41 @@ function createObservationStatusPanel(unit) {
     return panel;
   }
 
-  const activeRole =
-    observation.activeCrewRole;
-
   const hunterKiller =
     observation.hunterKiller;
 
-  const commanderSight =
-    observation.commanderIndependentSight;
-
   panel.append(
     createStatusRow(
-      "현재 감시",
-      CREW_ROLE_LABELS[activeRole] ?? "-",
+      "전차장",
+      getObserverStateLabel(
+        unit,
+        CREW_ROLES.COMMANDER,
+      ),
+    ),
+    createStatusRow(
+      "포수",
+      getObserverStateLabel(
+        unit,
+        CREW_ROLES.GUNNER,
+      ),
+    ),
+    createStatusRow(
+      "조종수",
+      getObserverStateLabel(
+        unit,
+        CREW_ROLES.DRIVER,
+      ),
+    ),
+    createStatusRow(
+      "탄약수",
+      getObserverStateLabel(
+        unit,
+        CREW_ROLES.LOADER,
+      ),
     ),
     createStatusRow(
       "CPS",
-      commanderSight?.operational
-        ? commanderSight.tracking
-          ? "표적 추적"
-          : "독립 감시"
-        : "고장",
+      getCommanderSightLabel(unit),
     ),
     createStatusRow(
       "헌터킬러",
@@ -307,7 +419,8 @@ export function createCommandPanel({
   }
 
   function showMessage(message) {
-    const paragraph = document.createElement("p");
+    const paragraph =
+      document.createElement("p");
 
     clear();
 
@@ -331,7 +444,8 @@ export function createCommandPanel({
   }
 
   function renderHull() {
-    const unit = getControllableUnit();
+    const unit =
+      getControllableUnit();
 
     clear();
 
@@ -434,7 +548,7 @@ export function createCommandPanel({
       id: "crew-observation",
 
       label:
-        `${CREW_ROLE_LABELS[crewRole]} 감시`,
+        `${CREW_ROLE_LABELS[crewRole]} 구역 지정`,
 
       needsTarget: true,
       crewRole,
@@ -454,7 +568,10 @@ export function createCommandPanel({
 
         if (!success) {
           onMessage(
-            "감시 방향을 지정할 수 없습니다.",
+            crewRole ===
+              CREW_ROLES.LOADER
+              ? "탄약수는 해치 개방·비장전 상태에서만 자유 감시구역을 지정할 수 있습니다."
+              : "감시구역을 지정할 수 없습니다.",
           );
 
           return;
@@ -463,7 +580,7 @@ export function createCommandPanel({
         onStateChanged();
 
         onMessage(
-          `${CREW_ROLE_LABELS[crewRole]} 감시 방향을 지정했습니다.`,
+          `${CREW_ROLE_LABELS[crewRole]} 감시구역을 지정했습니다.`,
         );
       },
     };
@@ -472,7 +589,7 @@ export function createCommandPanel({
   function createCommanderSightCommand() {
     return {
       id: "commander-sight",
-      label: "전차장 CPS 독립 감시",
+      label: "CPS 구역 지정",
       needsTarget: true,
 
       onTarget({
@@ -487,7 +604,7 @@ export function createCommandPanel({
 
         if (!success) {
           onMessage(
-            "CPS 감시 방향을 지정할 수 없습니다.",
+            "CPS 감시구역을 지정할 수 없습니다.",
           );
 
           return;
@@ -499,7 +616,7 @@ export function createCommandPanel({
         onStateChanged();
 
         onMessage(
-          "전차장 CPS 독립 감시 방향을 지정했습니다.",
+          "CPS가 지정 방향으로 회전을 시작했습니다.",
         );
       },
     };
@@ -536,42 +653,100 @@ export function createCommandPanel({
         onStateChanged();
 
         onMessage(
-          "CPS 표적지향을 시작했습니다.",
+          "CPS와 포탑이 표적 방향으로 회전을 시작했습니다.",
         );
       },
     };
   }
 
+  function createAutomaticObservationStatus(
+    label,
+    description,
+  ) {
+    const button =
+      createButton(
+        `${label}: ${description}`,
+        {
+          disabled: true,
+        },
+      );
+
+    return button;
+  }
+
   function renderObservationSection(unit) {
     const section =
-      createSection("감시 및 정찰");
+      createSection("감시구역 할당");
 
     section.append(
       createObservationStatusPanel(unit),
     );
 
-    Object.values(
-      CREW_ROLES,
-    ).forEach((crewRole) => {
-      section.append(
-        createCommandButton(
-          createCrewObservationCommand(
-            crewRole,
-          ),
-          onCommandSelected,
-        ),
+    const commanderAssignable =
+      canAssignCrewObservation(
+        unit,
+        CREW_ROLES.COMMANDER,
       );
-    });
+
+    const loaderAssignable =
+      canAssignCrewObservation(
+        unit,
+        CREW_ROLES.LOADER,
+      );
 
     section.append(
       createCommandButton(
-        createCommanderSightCommand(),
+        createCrewObservationCommand(
+          CREW_ROLES.COMMANDER,
+        ),
         onCommandSelected,
+        {
+          disabled:
+            !commanderAssignable,
+        },
       ),
+
+      createCommanderSightCommand()
+        ? createCommandButton(
+            createCommanderSightCommand(),
+            onCommandSelected,
+            {
+              disabled:
+                unit.crewObservation
+                  ?.commanderIndependentSight
+                  ?.operational !== true,
+            },
+          )
+        : null,
+
+      createAutomaticObservationStatus(
+        "포수",
+        "포탑 방향 자동 종속",
+      ),
+
+      createAutomaticObservationStatus(
+        "조종수",
+        "차체 전방 자동 종속",
+      ),
+
+      createCommandButton(
+        createCrewObservationCommand(
+          CREW_ROLES.LOADER,
+        ),
+        onCommandSelected,
+        {
+          disabled:
+            !loaderAssignable,
+        },
+      ),
+    );
+
+    section.append(
       createCommandButton(
         createHunterKillerCommand(),
         onCommandSelected,
       ),
+
       createCommandButton(
         {
           id: "recon",
@@ -580,6 +755,7 @@ export function createCommandPanel({
         },
         onCommandSelected,
       ),
+
       createCommandButton(
         {
           id: "recon-by-fire",
@@ -589,6 +765,25 @@ export function createCommandPanel({
         onCommandSelected,
       ),
     );
+
+    if (!loaderAssignable) {
+      const loaderNotice =
+        document.createElement("p");
+
+      loaderNotice.className =
+        "turret-warning";
+
+      loaderNotice.textContent =
+        unit.fireControl?.loading
+          ? "탄약수는 장전 중이므로 측면 잠망경을 통한 제한 감시만 수행합니다."
+          : unit.hatchState !== "open"
+            ? "탄약수는 해치가 닫혀 있어 측면 잠망경 방향으로 자동 감시합니다."
+            : "탄약수 감시구역을 현재 지정할 수 없습니다.";
+
+      section.append(
+        loaderNotice,
+      );
+    }
 
     return section;
   }
@@ -623,7 +818,6 @@ export function createCommandPanel({
             }
 
             onStateChanged();
-
             renderTurret();
 
             onMessage(
@@ -669,7 +863,6 @@ export function createCommandPanel({
               }
 
               onStateChanged();
-
               renderTurret();
 
               onMessage(
@@ -777,7 +970,8 @@ export function createCommandPanel({
   }
 
   function renderTurret() {
-    const unit = getControllableUnit();
+    const unit =
+      getControllableUnit();
 
     clear();
 
@@ -797,19 +991,10 @@ export function createCommandPanel({
       return;
     }
 
-    const observationSection =
-      renderObservationSection(unit);
-
-    const turretControlSection =
-      renderTurretControlSection(unit);
-
-    const smokeSection =
-      renderVehicleSmokeSection(unit);
-
     container.append(
-      observationSection,
-      turretControlSection,
-      smokeSection,
+      renderObservationSection(unit),
+      renderTurretControlSection(unit),
+      renderVehicleSmokeSection(unit),
     );
   }
 
