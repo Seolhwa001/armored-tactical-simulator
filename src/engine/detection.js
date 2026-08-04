@@ -1,4 +1,4 @@
-// src/engine/detection.js — 새 파일, 1~226행
+// src/engine/detection.js — 전체 교체, 1~298행
 
 export const DETECTION_STAGES = Object.freeze({
   HIDDEN: 0,
@@ -7,8 +7,24 @@ export const DETECTION_STAGES = Object.freeze({
   IDENTIFIED: 3,
 });
 
-const ACTION_OBSERVE = "observe";
 const ACTION_RECON = "recon";
+
+const ASPECT_FACTORS = Object.freeze({
+  FRONT: {
+    range: 1,
+    identification: 1,
+  },
+
+  SIDE: {
+    range: 0.72,
+    identification: 0.7,
+  },
+
+  REAR: {
+    range: 0.48,
+    identification: 0.45,
+  },
+});
 
 function normalizeAngle(angle) {
   let normalized =
@@ -23,6 +39,17 @@ function normalizeAngle(angle) {
   }
 
   return normalized;
+}
+
+function getAbsoluteAngleDifference(
+  first,
+  second,
+) {
+  return Math.abs(
+    normalizeAngle(
+      first - second,
+    ),
+  );
 }
 
 function getDirectionBetween(
@@ -85,90 +112,223 @@ export function getHexDistance(
   ) / 2;
 }
 
-function isInsideObservationArc(
+function getAspectFactors(
   observer,
-  target,
-  arcRadians = Math.PI / 2,
+  targetDirection,
 ) {
-  const actionDirection =
-    observer.action?.direction;
-
-  if (
-    observer.action?.type !==
-      ACTION_OBSERVE ||
-    !Number.isFinite(
-      actionDirection,
-    )
-  ) {
-    return false;
-  }
-
-  const targetDirection =
-    getDirectionBetween(
-      observer,
-      target,
-    );
+  const hullDirection =
+    observer.hullDirection ??
+    observer.direction ??
+    0;
 
   const difference =
-    Math.abs(
-      normalizeAngle(
-        targetDirection -
-          actionDirection,
-      ),
+    getAbsoluteAngleDifference(
+      targetDirection,
+      hullDirection,
     );
 
-  return (
+  if (
     difference <=
-    arcRadians / 2
-  );
+    Math.PI / 4
+  ) {
+    return ASPECT_FACTORS.FRONT;
+  }
+
+  if (
+    difference <=
+    Math.PI * 0.75
+  ) {
+    return ASPECT_FACTORS.SIDE;
+  }
+
+  return ASPECT_FACTORS.REAR;
 }
 
-function getObserverRange(
+function getEnabledCrewObservers(
+  observer,
+) {
+  const crewObservers =
+    observer.crewObservation
+      ?.observers;
+
+  if (!crewObservers) {
+    return [];
+  }
+
+  return Object.entries(
+    crewObservers,
+  )
+    .filter(
+      ([, crew]) =>
+        crew.enabled !== false,
+    )
+    .map(
+      ([role, crew]) => ({
+        role,
+        ...crew,
+      }),
+    );
+}
+
+function evaluateCrewObserver(
+  unit,
+  crew,
+  targetDirection,
+) {
+  const direction =
+    crew.direction ??
+    unit.hullDirection ??
+    0;
+
+  const fieldOfView =
+    crew.fieldOfView ??
+    Math.PI / 2;
+
+  const difference =
+    getAbsoluteAngleDifference(
+      targetDirection,
+      direction,
+    );
+
+  if (
+    difference >
+    fieldOfView / 2
+  ) {
+    return null;
+  }
+
+  const aspect =
+    getAspectFactors(
+      unit,
+      targetDirection,
+    );
+
+  return {
+    role: crew.role,
+
+    rangeFactor:
+      (
+        crew.rangeFactor ??
+        1
+      ) *
+      aspect.range,
+
+    identificationFactor:
+      (
+        crew.identificationFactor ??
+        1
+      ) *
+      aspect.identification,
+  };
+}
+
+function evaluateCommanderSight(
+  unit,
+  targetDirection,
+) {
+  const sight =
+    unit.crewObservation
+      ?.commanderIndependentSight;
+
+  if (
+    !sight?.operational
+  ) {
+    return null;
+  }
+
+  const difference =
+    getAbsoluteAngleDifference(
+      targetDirection,
+      sight.direction ??
+        unit.hullDirection ??
+        0,
+    );
+
+  if (
+    difference >
+    Math.PI / 3
+  ) {
+    return null;
+  }
+
+  return {
+    role: "commander-cps",
+    rangeFactor: 1.18,
+    identificationFactor: 1.2,
+  };
+}
+
+function getBestObservation(
   observer,
   enemy,
 ) {
-  const sensorRange =
-    (
-      observer.sensors
-        ?.surroundingRecon ??
-      70
-    ) / 10;
-
-  let range =
-    observer.detectionRange ??
-    sensorRange;
-
-  if (
-    observer.action?.type ===
-    ACTION_RECON
-  ) {
-    range += Math.max(
-      2,
-      (
-        observer.sensors
-          ?.surroundingRecon ??
-        50
-      ) / 25,
-    );
-  }
-
-  if (
-    isInsideObservationArc(
+  const targetDirection =
+    getDirectionBetween(
       observer,
       enemy,
+    );
+
+  const candidates =
+    getEnabledCrewObservers(
+      observer,
     )
-  ) {
-    range += Math.max(
-      3,
-      (
-        observer.sensors
-          ?.directionalObservation ??
-        54
-      ) / 18,
+      .map((crew) =>
+        evaluateCrewObserver(
+          observer,
+          crew,
+          targetDirection,
+        ),
+      )
+      .filter(Boolean);
+
+  const commanderSight =
+    evaluateCommanderSight(
+      observer,
+      targetDirection,
+    );
+
+  if (commanderSight) {
+    candidates.push(
+      commanderSight,
     );
   }
 
-  return range;
+  if (
+    candidates.length === 0
+  ) {
+    const aspect =
+      getAspectFactors(
+        observer,
+        targetDirection,
+      );
+
+    return {
+      role: null,
+      rangeFactor:
+        aspect.range * 0.45,
+
+      identificationFactor:
+        aspect.identification *
+        0.4,
+    };
+  }
+
+  return candidates.reduce(
+    (best, candidate) => {
+      const bestScore =
+        best.rangeFactor +
+        best.identificationFactor;
+
+      const candidateScore =
+        candidate.rangeFactor +
+        candidate.identificationFactor;
+
+      return candidateScore >
+        bestScore
+        ? candidate
+        : best;
+    },
+  );
 }
 
 function getEffectiveConcealment(
@@ -202,11 +362,32 @@ function calculateDetectionStage(
   distance,
   turn,
 ) {
-  const baseRange =
-    getObserverRange(
+  const observation =
+    getBestObservation(
       observer,
       enemy,
     );
+
+  const sensorRange =
+    (
+      observer.sensors
+        ?.surroundingRecon ??
+      70
+    ) / 10;
+
+  let baseRange =
+    observer.detectionRange ??
+    sensorRange;
+
+  if (
+    observer.action?.type ===
+    ACTION_RECON
+  ) {
+    baseRange += Math.max(
+      2,
+      sensorRange * 0.3,
+    );
+  }
 
   const concealmentPenalty =
     getEffectiveConcealment(
@@ -216,38 +397,45 @@ function calculateDetectionStage(
 
   const effectiveRange =
     Math.max(
-      2,
-      baseRange -
+      1,
+      baseRange *
+        observation.rangeFactor -
         concealmentPenalty,
     );
 
-  if (
-    distance <=
-    Math.max(
-      1,
-      effectiveRange * 0.45,
-    )
-  ) {
-    return DETECTION_STAGES.IDENTIFIED;
-  }
+  const identificationRange =
+    effectiveRange *
+    0.48 *
+    observation
+      .identificationFactor;
+
+  let stage =
+    DETECTION_STAGES.HIDDEN;
 
   if (
     distance <=
-    Math.max(
-      2,
-      effectiveRange * 0.75,
-    )
+    identificationRange
   ) {
-    return DETECTION_STAGES.DETECTED;
-  }
-
-  if (
+    stage =
+      DETECTION_STAGES.IDENTIFIED;
+  } else if (
+    distance <=
+    effectiveRange * 0.75
+  ) {
+    stage =
+      DETECTION_STAGES.DETECTED;
+  } else if (
     distance <= effectiveRange
   ) {
-    return DETECTION_STAGES.CONTACT;
+    stage =
+      DETECTION_STAGES.CONTACT;
   }
 
-  return DETECTION_STAGES.HIDDEN;
+  return {
+    stage,
+    observerRole:
+      observation.role,
+  };
 }
 
 function clearExpiredExposure(
@@ -296,6 +484,12 @@ export function updateDetection(
     let bestDistance =
       Infinity;
 
+    let bestObserverId =
+      null;
+
+    let bestObserverRole =
+      null;
+
     friendlies.forEach(
       (observer) => {
         const distance =
@@ -304,7 +498,7 @@ export function updateDetection(
             enemy,
           );
 
-        const stage =
+        const result =
           calculateDetectionStage(
             observer,
             enemy,
@@ -313,14 +507,26 @@ export function updateDetection(
           );
 
         if (
-          stage > bestStage ||
+          result.stage >
+            bestStage ||
           (
-            stage === bestStage &&
-            distance < bestDistance
+            result.stage ===
+              bestStage &&
+            distance <
+              bestDistance
           )
         ) {
-          bestStage = stage;
-          bestDistance = distance;
+          bestStage =
+            result.stage;
+
+          bestDistance =
+            distance;
+
+          bestObserverId =
+            observer.id;
+
+          bestObserverRole =
+            result.observerRole;
         }
       },
     );
@@ -346,6 +552,12 @@ export function updateDetection(
       70,
       100,
     ][bestStage];
+
+    enemy.detectedByUnitId =
+      bestObserverId;
+
+    enemy.detectedByCrewRole =
+      bestObserverRole;
 
     if (
       bestStage !==
