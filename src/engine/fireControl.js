@@ -2,15 +2,18 @@
 // ATS PROJECT
 // File      : src/engine/fireControl.js
 // Sprint    : 3.9.1
-// Revision  : R5
+// Revision  : R7
 // Build     : 2026-08-05
-// Type      : PARTIAL PATCH
-// Purpose   : Fire procedure with explicit fire command and live target synchronization
+// Type      : PATCHED FULL REPLACEMENT
+// Purpose   : Fire procedure with abstract directed-action reactions
 // ============================================================
 
 import { UNIT_ACTIONS } from "./constants/actionConstants.js";
 import { createIdleAction } from "./factories/actionFactory.js";
-import { getHexDirection } from "./hexGeometry.js";
+import {
+  getHexDirection,
+  getHexDistance,
+} from "./hexGeometry.js";
 
 import {
   canTurretFire,
@@ -1328,6 +1331,170 @@ export function registerAdjustedShot(
       shotResult.ammunition,
 
     shotResult,
+  };
+}
+
+function applyDirectedActionReaction(
+  runtimeScenario,
+  sourceUnit,
+  targetHex,
+  turn,
+  reactionValue,
+) {
+  const affectedUnits =
+    Array.isArray(
+      runtimeScenario?.units,
+    )
+      ? runtimeScenario.units.filter(
+          (candidate) =>
+            candidate.side !==
+              sourceUnit.side &&
+            !candidate.destroyed &&
+            getHexDistance(
+              candidate,
+              targetHex,
+            ) <= 1,
+        )
+      : [];
+
+  affectedUnits.forEach(
+    (candidate) => {
+      candidate.reactionTriggered =
+        true;
+
+      candidate.temporaryAlert =
+        Math.max(
+          Number.isFinite(
+            candidate.temporaryAlert,
+          )
+            ? candidate.temporaryAlert
+            : 0,
+          reactionValue,
+        );
+
+      candidate.movementChance =
+        Math.max(
+          Number.isFinite(
+            candidate.movementChance,
+          )
+            ? candidate.movementChance
+            : 0,
+          0.2,
+        );
+
+      candidate.signatureIncrease =
+        Math.max(
+          Number.isFinite(
+            candidate.signatureIncrease,
+          )
+            ? candidate.signatureIncrease
+            : 0,
+          reactionValue,
+        );
+
+      candidate.lastReactionTurn =
+        turn;
+
+      candidate.reconByFireSourceUnitId =
+        sourceUnit.id;
+    },
+  );
+
+  return affectedUnits.map(
+    (candidate) => candidate.id,
+  );
+}
+
+export function executeDirectedAction(
+  runtimeScenario,
+  unit,
+  turn,
+  options = {},
+) {
+  if (
+    unit.destroyed ||
+    !unit.fireControl ||
+    !unit.turretControl ||
+    !options.targetHex
+  ) {
+    return {
+      success: false,
+      reason:
+        "방향성 행동을 실행할 수 없습니다.",
+    };
+  }
+
+  setTurretTargetDirection(
+    unit,
+    getDirectionBetween(
+      unit,
+      options.targetHex,
+    ),
+  );
+
+  const permission =
+    canTurretFire(
+      unit,
+      {
+        moving:
+          options.moving === true,
+      },
+    );
+
+  if (!permission.allowed) {
+    return {
+      success: false,
+      reason: permission.reason,
+    };
+  }
+
+  const fireControl =
+    unit.fireControl;
+
+  if (
+    !fireControl.loaded ||
+    !fireControl.loadedAmmunition
+  ) {
+    return {
+      success: false,
+      reason:
+        "사용 가능한 자원이 준비되지 않았습니다.",
+    };
+  }
+
+  const resourceType =
+    fireControl.loadedAmmunition;
+
+  const reactionValue = 20;
+
+  const affectedUnitIds =
+    applyDirectedActionReaction(
+      runtimeScenario,
+      unit,
+      options.targetHex,
+      turn,
+      reactionValue,
+    );
+
+  clearLoadedRound(unit);
+  resetAimingState(unit);
+
+  fireControl.roundsFired += 1;
+  fireControl.lastFiredTurn = turn;
+  fireControl.lastShotResult = {
+    success: true,
+    resourceSpent: 1,
+    affectedUnitIds,
+    reactionValue,
+    resourceType,
+  };
+
+  return {
+    success: true,
+    resourceSpent: 1,
+    affectedUnitIds,
+    reactionValue,
+    resourceType,
   };
 }
 

@@ -2,10 +2,10 @@
 // ATS PROJECT
 // File      : src/engine/detection.js
 // Sprint    : 3.9.1
-// Revision  : R7
+// Revision  : R9
 // Build     : 2026-08-05
 // Type      : PATCHED FULL REPLACEMENT
-// Purpose   : Directional detection with developer decision replay
+// Purpose   : Directional detection with complete candidate diagnostics
 // ============================================================
 
 import {
@@ -282,31 +282,195 @@ function getObservationCandidates(
       enemy,
     );
 
-  const candidates =
-    getActiveCrewObservers(
-      observer,
-    )
-      .map(
-        (crewObserver) =>
-          evaluateCrewObserver(
-            observer,
-            crewObserver,
-            targetDirection,
+  const diagnostics = [];
+  const candidates = [];
+  const observers =
+    observer.crewObservation
+      ?.observers ?? {};
+
+  Object.entries(observers).forEach(
+    ([role, crewObserver]) => {
+      const enabled =
+        crewObserver?.enabled !==
+          false;
+
+      const observing =
+        crewObserver?.observing ===
+          true;
+
+      const observerDirection =
+        Number.isFinite(
+          crewObserver?.direction,
+        )
+          ? crewObserver.direction
+          : null;
+
+      const fieldOfView =
+        positiveOrDefault(
+          crewObserver?.fieldOfView,
+          Math.PI / 2,
+        );
+
+      const angleDifference =
+        observerDirection === null
+          ? null
+          : getAbsoluteAngleDifference(
+              targetDirection,
+              observerDirection,
+            );
+
+      let rejectionReason = null;
+
+      if (!enabled) {
+        rejectionReason =
+          "OBSERVER_DISABLED";
+      } else if (!observing) {
+        rejectionReason =
+          "NOT_OBSERVING";
+      } else if (
+        observerDirection === null
+      ) {
+        rejectionReason =
+          "INVALID_DIRECTION";
+      } else if (
+        angleDifference >
+        fieldOfView / 2
+      ) {
+        rejectionReason =
+          "OUTSIDE_FIELD_OF_VIEW";
+      }
+
+      const candidate =
+        rejectionReason === null
+          ? evaluateCrewObserver(
+              observer,
+              {
+                role,
+                ...crewObserver,
+              },
+              targetDirection,
+            )
+          : null;
+
+      if (candidate) {
+        candidates.push(candidate);
+      }
+
+      diagnostics.push({
+        role,
+        sourceType: "crew-observer",
+        enabled,
+        observing,
+        observerDirection,
+        targetDirection,
+        angleDifference,
+        fieldOfView,
+        range:
+          nonNegativeOrDefault(
+            crewObserver?.range,
+            DEFAULT_OBSERVER_RANGE,
           ),
-      )
-      .filter(Boolean);
+        identificationFactor:
+          nonNegativeOrDefault(
+            crewObserver
+              ?.identificationFactor,
+            DEFAULT_IDENTIFICATION_FACTOR,
+          ),
+        directionAccepted:
+          Boolean(candidate),
+        rejectionReason,
+      });
+    },
+  );
+
+  const sight =
+    observer.crewObservation
+      ?.commanderIndependentSight;
+
+  const sightEnabled =
+    sight?.operational === true;
+
+  const sightObserving =
+    sight?.active === true;
+
+  const sightDirection =
+    Number.isFinite(sight?.direction)
+      ? sight.direction
+      : null;
+
+  const sightFieldOfView =
+    positiveOrDefault(
+      sight?.fieldOfView,
+      Math.PI / 3,
+    );
+
+  const sightAngleDifference =
+    sightDirection === null
+      ? null
+      : getAbsoluteAngleDifference(
+          targetDirection,
+          sightDirection,
+        );
+
+  let sightRejectionReason = null;
+
+  if (!sightEnabled) {
+    sightRejectionReason =
+      "OBSERVER_DISABLED";
+  } else if (!sightObserving) {
+    sightRejectionReason =
+      "NOT_OBSERVING";
+  } else if (sightDirection === null) {
+    sightRejectionReason =
+      "INVALID_DIRECTION";
+  } else if (
+    sightAngleDifference >
+    sightFieldOfView / 2
+  ) {
+    sightRejectionReason =
+      "OUTSIDE_FIELD_OF_VIEW";
+  }
 
   const commanderSight =
-    evaluateCommanderSight(
-      observer,
-      targetDirection,
-    );
+    sightRejectionReason === null
+      ? evaluateCommanderSight(
+          observer,
+          targetDirection,
+        )
+      : null;
 
   if (commanderSight) {
-    candidates.push(
-      commanderSight,
-    );
+    candidates.push(commanderSight);
   }
+
+  diagnostics.push({
+    role: "commander-cps",
+    sourceType: "commander-sight",
+    enabled: sightEnabled,
+    observing: sightObserving,
+    observerDirection: sightDirection,
+    targetDirection,
+    angleDifference:
+      sightAngleDifference,
+    fieldOfView: sightFieldOfView,
+    range:
+      nonNegativeOrDefault(
+        sight?.range,
+        1.18,
+      ),
+    identificationFactor:
+      nonNegativeOrDefault(
+        sight?.identificationFactor,
+        1.2,
+      ),
+    directionAccepted:
+      Boolean(commanderSight),
+    rejectionReason:
+      sightRejectionReason,
+  });
+
+  const reconActive =
+    isReconActive(observer);
 
   const reconCandidate =
     createReconObservationCandidate(
@@ -314,10 +478,32 @@ function getObservationCandidates(
     );
 
   if (reconCandidate) {
-    candidates.push(
-      reconCandidate,
-    );
+    candidates.push(reconCandidate);
   }
+
+  diagnostics.push({
+    role: "crew-recon",
+    sourceType: "crew-recon",
+    enabled: true,
+    observing: reconActive,
+    observerDirection: null,
+    targetDirection,
+    angleDifference:
+      reconActive ? 0 : null,
+    fieldOfView: Math.PI * 2,
+    range: RECON_RANGE_FACTOR,
+    identificationFactor:
+      RECON_IDENTIFICATION_FACTOR,
+    directionAccepted:
+      Boolean(reconCandidate),
+    rejectionReason:
+      reconActive
+        ? null
+        : "NOT_OBSERVING",
+  });
+
+  candidates.diagnostics =
+    diagnostics;
 
   return candidates;
 }
@@ -557,6 +743,104 @@ function evaluateDetectionCandidate(
   };
 }
 
+function enrichCandidateDiagnostics(
+  observer,
+  enemy,
+  distance,
+  turn,
+  diagnostics,
+  results,
+) {
+  const visualRange =
+    getSensorVisualRange(observer);
+
+  const identificationRange =
+    getSensorIdentificationRange(
+      observer,
+      visualRange,
+    );
+
+  const concealmentPenalty =
+    getEffectiveConcealment(
+      enemy,
+      turn,
+    ) / 25;
+
+  return diagnostics.map(
+    (diagnostic) => {
+      const matchingResult =
+        results.find(
+          (result) =>
+            result.role ===
+            diagnostic.role,
+        ) ?? null;
+
+      const observerRange =
+        nonNegativeOrDefault(
+          diagnostic.range,
+          DEFAULT_OBSERVER_RANGE,
+        );
+
+      const identificationFactor =
+        nonNegativeOrDefault(
+          diagnostic
+            .identificationFactor,
+          DEFAULT_IDENTIFICATION_FACTOR,
+        );
+
+      const effectiveVisualRange =
+        matchingResult
+          ?.effectiveVisualRange ??
+        Math.max(
+          0,
+          visualRange *
+            observerRange -
+            concealmentPenalty,
+        );
+
+      const effectiveIdentificationRange =
+        matchingResult
+          ?.effectiveIdentificationRange ??
+        Math.max(
+          0,
+          identificationRange *
+            observerRange *
+            identificationFactor -
+            concealmentPenalty,
+        );
+
+      const candidateStage =
+        matchingResult?.stage ??
+        DETECTION_STAGES.HIDDEN;
+
+      let rejectionReason =
+        diagnostic.rejectionReason;
+
+      if (
+        rejectionReason === null &&
+        distance > effectiveVisualRange
+      ) {
+        rejectionReason =
+          "OUTSIDE_VISUAL_RANGE";
+      }
+
+      return {
+        ...diagnostic,
+        distance,
+        visualRange,
+        effectiveVisualRange,
+        identificationRange,
+        effectiveIdentificationRange,
+        concealmentPenalty,
+        candidateStage,
+        accepted:
+          rejectionReason === null,
+        rejectionReason,
+      };
+    },
+  );
+}
+
 function calculateDetectionStage(
   observer,
   enemy,
@@ -592,6 +876,16 @@ function calculateDetectionStage(
 
       effectiveIdentificationRange:
         0,
+
+      candidateDiagnostics:
+        enrichCandidateDiagnostics(
+          observer,
+          enemy,
+          distance,
+          turn,
+          candidates.diagnostics ?? [],
+          [],
+        ),
     };
   }
 
@@ -605,6 +899,16 @@ function calculateDetectionStage(
           turn,
           candidate,
         ),
+    );
+
+  const candidateDiagnostics =
+    enrichCandidateDiagnostics(
+      observer,
+      enemy,
+      distance,
+      turn,
+      candidates.diagnostics ?? [],
+      results,
     );
 
   const best =
@@ -684,6 +988,8 @@ function calculateDetectionStage(
 
     concealmentPenalty:
       best.concealmentPenalty,
+
+    candidateDiagnostics,
   };
 }
 
@@ -787,6 +1093,13 @@ function createDetectionReplay({
         result?.candidateCount,
         0,
       ),
+
+    candidateDiagnostics:
+      Array.isArray(
+        result?.candidateDiagnostics,
+      )
+        ? result.candidateDiagnostics
+        : [],
 
     effectiveVisualRange:
       nonNegativeOrDefault(
