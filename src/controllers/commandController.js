@@ -1,14 +1,12 @@
 // ============================================================
 // ATS PROJECT
 // File      : src/controllers/commandController.js
-// Sprint    : 3.9.1
-// Revision  : R1
+// Sprint    : 3.9.2
+// Revision  : R2
 // Build     : 2026-08-05
 // Type      : PARTIAL PATCH
-// Purpose   : Command selection with immediate fire-target feedback
+// Purpose   : Fire and recon-by-fire target selection routing
 // ============================================================
-
-// src/controllers/commandController.js — 신규 파일, 예상 1~130행
 
 export function createCommandController({
   state,
@@ -121,11 +119,6 @@ export function createCommandController({
     state.activeCategory = category;
     state.selectedCommand = null;
 
-    firePanel
-      .setTargetSelectionActive?.(
-        false,
-      );
-
     updateActiveCategoryButton(
       category,
     );
@@ -162,23 +155,34 @@ export function createCommandController({
       needsTarget: true,
     };
 
-    firePanel
-      .setTargetSelectionActive?.(
-        true,
+    return true;
+  }
+
+  function beginReconByFireTargetSelection() {
+    const unit = getSelectedUnit();
+
+    if (
+      !unit ||
+      unit.destroyed
+    ) {
+      setMessage(
+        "화력수색 목표를 지정할 수 없습니다.",
       );
 
-    firePanel.render();
+      return false;
+    }
+
+    state.selectedCommand = {
+      id: "recon-by-fire",
+      label: "화력수색",
+      needsTarget: true,
+    };
 
     return true;
   }
 
   function clearSelectedCommand() {
     state.selectedCommand = null;
-
-    firePanel
-      .setTargetSelectionActive?.(
-        false,
-      );
 
     updateSelectedCommandButton(
       null,
@@ -205,6 +209,7 @@ export function createCommandController({
     handleCommandSelection,
     selectCategory,
     beginFireTargetSelection,
+    beginReconByFireTargetSelection,
     clearSelectedCommand,
     refreshActivePanel,
   };
