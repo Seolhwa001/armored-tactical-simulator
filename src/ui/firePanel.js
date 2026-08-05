@@ -2,10 +2,10 @@
 // ATS PROJECT
 // File      : src/ui/firePanel.js
 // Sprint    : 3.9.1
-// Revision  : R6
+// Revision  : R7
 // Build     : 2026-08-05
-// Type      : FULL REPLACEMENT
-// Purpose   : Fire UI with Hunter Killer target and handoff status
+// Type      : PARTIAL PATCH
+// Purpose   : Fire UI with immediate target-selection feedback
 // ============================================================
 
 import {
@@ -504,6 +504,9 @@ export function createFirePanel({
     targetUnitId: null,
   };
 
+  let targetSelectionActive =
+    false;
+
   function synchronizeProcedure(unit) {
     const fireControl =
       unit.fireControl;
@@ -538,6 +541,9 @@ export function createFirePanel({
 
     procedure.targetUnitId =
       null;
+
+    targetSelectionActive =
+      false;
   }
 
   function setTarget(
@@ -579,6 +585,9 @@ export function createFirePanel({
     synchronizeProcedure(
       unit,
     );
+
+    targetSelectionActive =
+      false;
 
     onStateChanged();
 
@@ -636,6 +645,13 @@ export function createFirePanel({
     }
 
     render();
+  }
+
+  function setTargetSelectionActive(
+    active,
+  ) {
+    targetSelectionActive =
+      active === true;
   }
 
   function renderUnavailable(
@@ -821,6 +837,9 @@ export function createFirePanel({
       createButton(
         "표적 지정",
         {
+          active:
+            targetSelectionActive,
+
           current:
             procedureState ===
             FIRE_PROCEDURE_STATES
@@ -831,11 +850,21 @@ export function createFirePanel({
             FIRE_STATES.ADJUST,
 
           onClick: () => {
-            onBeginTargetSelection();
+            const started =
+              onBeginTargetSelection();
+
+            if (!started) {
+              return;
+            }
+
+            targetSelectionActive =
+              true;
 
             onMessage(
               "지도에서 사격 목표 헥스를 선택하세요.",
             );
+
+            render();
           },
         },
       ),
@@ -1115,6 +1144,7 @@ export function createFirePanel({
     render,
     reset,
     setTarget,
+    setTargetSelectionActive,
 
     getProcedure() {
       return {
