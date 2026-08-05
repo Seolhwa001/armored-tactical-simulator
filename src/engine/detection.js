@@ -1,4 +1,16 @@
-// src/engine/detection.js — 전체 교체
+// ============================================================
+// ATS PROJECT
+// File      : src/engine/detection.js
+// Sprint    : 3.9.1
+// Revision  : R4
+// Build     : 2026-08-05
+// Type      : FULL REPLACEMENT
+// Purpose   : Directional detection using shared hex geometry
+// ============================================================
+
+import {
+  getHexDirection,
+} from "./hexGeometry.js";
 
 export const DETECTION_STAGES = Object.freeze({
   HIDDEN: 0,
@@ -13,6 +25,9 @@ const DEFAULT_VISUAL_RANGE = 7;
 const DEFAULT_IDENTIFICATION_RATIO = 0.48;
 const DEFAULT_OBSERVER_RANGE = 1;
 const DEFAULT_IDENTIFICATION_FACTOR = 1;
+
+const RECON_RANGE_FACTOR = 1;
+const RECON_IDENTIFICATION_FACTOR = 0.75;
 
 function finiteOrDefault(
   value,
@@ -51,20 +66,15 @@ function positiveOrDefault(
 
 function normalizeAngle(angle) {
   let normalized =
-    finiteOrDefault(
-      angle,
-      0,
-    ) %
+    finiteOrDefault(angle, 0) %
     (Math.PI * 2);
 
   if (normalized > Math.PI) {
-    normalized -=
-      Math.PI * 2;
+    normalized -= Math.PI * 2;
   }
 
   if (normalized < -Math.PI) {
-    normalized +=
-      Math.PI * 2;
+    normalized += Math.PI * 2;
   }
 
   return normalized;
@@ -79,16 +89,6 @@ function getAbsoluteAngleDifference(
       finiteOrDefault(first, 0) -
       finiteOrDefault(second, 0),
     ),
-  );
-}
-
-function getDirectionBetween(
-  observer,
-  target,
-) {
-  return Math.atan2(
-    target.row - observer.row,
-    target.column - observer.column,
   );
 }
 
@@ -135,26 +135,28 @@ export function getHexDistance(
   return (
     Math.abs(deltaQ) +
     Math.abs(deltaR) +
-    Math.abs(
-      deltaQ + deltaR,
-    )
+    Math.abs(deltaQ + deltaR)
   ) / 2;
 }
 
-function getActiveCrewObservers(
-  unit,
-) {
+function isReconActive(unit) {
+  return (
+    unit.action?.type ===
+      ACTION_RECON ||
+    unit.persistentAction?.type ===
+      ACTION_RECON
+  );
+}
+
+function getActiveCrewObservers(unit) {
   const observers =
-    unit.crewObservation
-      ?.observers;
+    unit.crewObservation?.observers;
 
   if (!observers) {
     return [];
   }
 
-  return Object.entries(
-    observers,
-  )
+  return Object.entries(observers)
     .filter(
       ([, observer]) =>
         observer?.enabled !== false &&
@@ -274,20 +276,34 @@ function evaluateCommanderSight(
   };
 }
 
+function createReconObservationCandidate(
+  unit,
+) {
+  if (!isReconActive(unit)) {
+    return null;
+  }
+
+  return {
+    role: "crew-recon",
+    range: RECON_RANGE_FACTOR,
+
+    identificationFactor:
+      RECON_IDENTIFICATION_FACTOR,
+  };
+}
+
 function getObservationCandidates(
   observer,
   enemy,
 ) {
   const targetDirection =
-    getDirectionBetween(
+    getHexDirection(
       observer,
       enemy,
     );
 
   const candidates =
-    getActiveCrewObservers(
-      observer,
-    )
+    getActiveCrewObservers(observer)
       .map((crewObserver) =>
         evaluateCrewObserver(
           observer,
@@ -309,20 +325,26 @@ function getObservationCandidates(
     );
   }
 
+  const reconCandidate =
+    createReconObservationCandidate(
+      observer,
+    );
+
+  if (reconCandidate) {
+    candidates.push(
+      reconCandidate,
+    );
+  }
+
   return candidates;
 }
 
-function getSensorVisualRange(
-  observer,
-) {
+function getSensorVisualRange(observer) {
   const sensorVisualRange =
-    observer.sensors
-      ?.visualRange;
+    observer.sensors?.visualRange;
 
   if (
-    Number.isFinite(
-      sensorVisualRange,
-    ) &&
+    Number.isFinite(sensorVisualRange) &&
     sensorVisualRange > 0
   ) {
     return sensorVisualRange;
@@ -365,9 +387,7 @@ function getSensorIdentificationRange(
       ?.identificationRange;
 
   if (
-    Number.isFinite(
-      configuredRange,
-    ) &&
+    Number.isFinite(configuredRange) &&
     configuredRange >= 0
   ) {
     return configuredRange;
@@ -379,18 +399,47 @@ function getSensorIdentificationRange(
   );
 }
 
+function isExposureActive(
+  enemy,
+  turn,
+) {
+  return (
+    enemy.exposedUntilTurn !== null &&
+    enemy.exposedUntilTurn !== undefined &&
+    enemy.exposedUntilTurn >= turn &&
+    nonNegativeOrDefault(
+      enemy.temporaryExposure,
+      0,
+    ) > 0
+  );
+}
+
+function getExposureMinimumStage(
+  enemy,
+  turn,
+) {
+  if (!isExposureActive(enemy, turn)) {
+    return DETECTION_STAGES.HIDDEN;
+  }
+
+  const previousStage =
+    nonNegativeOrDefault(
+      enemy.detectionStage,
+      DETECTION_STAGES.HIDDEN,
+    );
+
+  return previousStage >=
+    DETECTION_STAGES.CONTACT
+    ? DETECTION_STAGES.CONTACT
+    : DETECTION_STAGES.HIDDEN;
+}
+
 function getEffectiveConcealment(
   enemy,
   turn,
 ) {
-  const exposureActive =
-    enemy.exposedUntilTurn !==
-      null &&
-    enemy.exposedUntilTurn >=
-      turn;
-
   const exposure =
-    exposureActive
+    isExposureActive(enemy, turn)
       ? nonNegativeOrDefault(
           enemy.temporaryExposure,
           0,
@@ -414,24 +463,13 @@ function evaluateDetectionCandidate(
   observation,
 ) {
   const visualRange =
-    getSensorVisualRange(
-      observer,
-    );
+    getSensorVisualRange(observer);
 
   const identificationRange =
     getSensorIdentificationRange(
       observer,
       visualRange,
     );
-
-  const reconBonus =
-    observer.action?.type ===
-      ACTION_RECON
-      ? Math.max(
-          2,
-          visualRange * 0.3,
-        )
-      : 0;
 
   const observerRange =
     nonNegativeOrDefault(
@@ -441,8 +479,7 @@ function evaluateDetectionCandidate(
 
   const identificationFactor =
     nonNegativeOrDefault(
-      observation
-        .identificationFactor,
+      observation.identificationFactor,
       DEFAULT_IDENTIFICATION_FACTOR,
     );
 
@@ -455,10 +492,7 @@ function evaluateDetectionCandidate(
   const effectiveVisualRange =
     Math.max(
       0,
-      (
-        visualRange +
-        reconBonus
-      ) *
+      visualRange *
         observerRange -
         concealmentPenalty,
     );
@@ -466,11 +500,7 @@ function evaluateDetectionCandidate(
   const effectiveIdentificationRange =
     Math.max(
       0,
-      (
-        identificationRange +
-        reconBonus *
-          DEFAULT_IDENTIFICATION_RATIO
-      ) *
+      identificationRange *
         observerRange *
         identificationFactor -
         concealmentPenalty,
@@ -519,9 +549,7 @@ function calculateDetectionStage(
       enemy,
     );
 
-  if (
-    candidates.length === 0
-  ) {
+  if (candidates.length === 0) {
     return {
       stage:
         DETECTION_STAGES.HIDDEN,
@@ -592,10 +620,9 @@ function clearExpiredExposure(
   turn,
 ) {
   if (
-    enemy.exposedUntilTurn ===
-      null ||
-    enemy.exposedUntilTurn >=
-      turn
+    enemy.exposedUntilTurn === null ||
+    enemy.exposedUntilTurn === undefined ||
+    enemy.exposedUntilTurn >= turn
   ) {
     return;
   }
@@ -620,16 +647,14 @@ export function updateDetection(
   const friendlies =
     units.filter(
       (unit) =>
-        unit.side ===
-          "friendly" &&
+        unit.side === "friendly" &&
         !unit.destroyed,
     );
 
   const enemies =
     units.filter(
       (unit) =>
-        unit.side ===
-          "enemy" &&
+        unit.side === "enemy" &&
         !unit.destroyed,
     );
 
@@ -645,6 +670,12 @@ export function updateDetection(
 
     let bestObserverRole =
       null;
+
+    const exposureMinimumStage =
+      getExposureMinimumStage(
+        enemy,
+        turn,
+      );
 
     friendlies.forEach(
       (observer) => {
@@ -669,8 +700,7 @@ export function updateDetection(
             result.stage ===
               bestStage &&
             result.stage !==
-              DETECTION_STAGES
-                .HIDDEN &&
+              DETECTION_STAGES.HIDDEN &&
             distance <
               bestDistance
           )
@@ -689,6 +719,23 @@ export function updateDetection(
         }
       },
     );
+
+    bestStage =
+      Math.max(
+        bestStage,
+        exposureMinimumStage,
+      );
+
+    if (
+      bestStage ===
+        DETECTION_STAGES.CONTACT &&
+      exposureMinimumStage ===
+        DETECTION_STAGES.CONTACT &&
+      bestObserverId === null
+    ) {
+      bestObserverRole =
+        "recon-by-fire";
+    }
 
     enemy.detectionStage =
       bestStage;
