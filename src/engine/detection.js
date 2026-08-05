@@ -2,10 +2,10 @@
 // ATS PROJECT
 // File      : src/engine/detection.js
 // Sprint    : 3.9.1
-// Revision  : R10
+// Revision  : R11
 // Build     : 2026-08-05
 // Type      : PATCHED FULL REPLACEMENT
-// Purpose   : Directional detection with shared smoke-occlusion diagnostics
+// Purpose   : Directional detection with smoke diagnostics and temporary role range balance
 // ============================================================
 
 import {
@@ -48,6 +48,13 @@ const DEFAULT_OBSERVER_RANGE =
 
 const DEFAULT_IDENTIFICATION_FACTOR =
   1;
+
+const TEMPORARY_ROLE_VISUAL_RANGES =
+  Object.freeze({
+    gunner: 20,
+    commander: 12,
+    "commander-cps": 20,
+  });
 
 const RECON_RANGE_FACTOR =
   1;
@@ -557,6 +564,32 @@ function getSensorVisualRange(
   return DEFAULT_VISUAL_RANGE;
 }
 
+function getObservationVisualRange(
+  observer,
+  observation,
+) {
+  const sensorVisualRange =
+    getSensorVisualRange(observer);
+
+  const temporaryRoleRange =
+    TEMPORARY_ROLE_VISUAL_RANGES[
+      observation?.role
+    ];
+
+  if (
+    !Number.isFinite(
+      temporaryRoleRange,
+    )
+  ) {
+    return sensorVisualRange;
+  }
+
+  return Math.max(
+    sensorVisualRange,
+    temporaryRoleRange,
+  );
+}
+
 function getSensorIdentificationRange(
   observer,
   visualRange,
@@ -658,8 +691,9 @@ function evaluateDetectionCandidate(
   smokeContext,
 ) {
   const visualRange =
-    getSensorVisualRange(
+    getObservationVisualRange(
       observer,
+      observation,
     );
 
   const identificationRange =
@@ -775,15 +809,6 @@ function enrichCandidateDiagnostics(
   results,
   smokeContext,
 ) {
-  const visualRange =
-    getSensorVisualRange(observer);
-
-  const identificationRange =
-    getSensorIdentificationRange(
-      observer,
-      visualRange,
-    );
-
   const concealmentPenalty =
     getEffectiveConcealment(
       enemy,
@@ -800,6 +825,18 @@ function enrichCandidateDiagnostics(
 
   return diagnostics.map(
     (diagnostic) => {
+      const visualRange =
+        getObservationVisualRange(
+          observer,
+          diagnostic,
+        );
+
+      const identificationRange =
+        getSensorIdentificationRange(
+          observer,
+          visualRange,
+        );
+
       const matchingResult =
         results.find(
           (result) =>
