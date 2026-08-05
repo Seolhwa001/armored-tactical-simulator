@@ -2,10 +2,10 @@
 // ATS PROJECT
 // File      : src/render/unitRenderer.js
 // Sprint    : 3.9.1
-// Revision  : R8
+// Revision  : R10
 // Build     : 2026-08-05
 // Type      : PATCHED FULL REPLACEMENT
-// Purpose   : Preserve confidence alpha across all detection-stage icons
+// Purpose   : Unit rendering with separate control and debug selections
 // ============================================================
 
 import {
@@ -21,29 +21,43 @@ import {
   isUnitVisible,
 } from "../engine/detection.js";
 
-const DEFAULT_VISUAL_RANGE = 7;
+const DEFAULT_VISUAL_RANGE =
+  7;
 
-const CREW_OBSERVATION_STYLES = Object.freeze({
-  [CREW_ROLES.COMMANDER]: {
-    stroke: "rgba(255, 218, 128, 0.9)",
-    fill: "rgba(255, 218, 128, 0.1)",
-  },
+const CREW_OBSERVATION_STYLES =
+  Object.freeze({
+    [CREW_ROLES.COMMANDER]: {
+      stroke:
+        "rgba(255, 218, 128, 0.9)",
 
-  [CREW_ROLES.GUNNER]: {
-    stroke: "rgba(128, 194, 255, 0.9)",
-    fill: "rgba(128, 194, 255, 0.1)",
-  },
+      fill:
+        "rgba(255, 218, 128, 0.1)",
+    },
 
-  [CREW_ROLES.DRIVER]: {
-    stroke: "rgba(153, 221, 161, 0.9)",
-    fill: "rgba(153, 221, 161, 0.1)",
-  },
+    [CREW_ROLES.GUNNER]: {
+      stroke:
+        "rgba(128, 194, 255, 0.9)",
 
-  [CREW_ROLES.LOADER]: {
-    stroke: "rgba(211, 165, 255, 0.9)",
-    fill: "rgba(211, 165, 255, 0.1)",
-  },
-});
+      fill:
+        "rgba(128, 194, 255, 0.1)",
+    },
+
+    [CREW_ROLES.DRIVER]: {
+      stroke:
+        "rgba(153, 221, 161, 0.9)",
+
+      fill:
+        "rgba(153, 221, 161, 0.1)",
+    },
+
+    [CREW_ROLES.LOADER]: {
+      stroke:
+        "rgba(211, 165, 255, 0.9)",
+
+      fill:
+        "rgba(211, 165, 255, 0.1)",
+    },
+  });
 
 function finiteOrDefault(
   value,
@@ -120,16 +134,13 @@ function getObserverRadius(
   observer,
   hexRadius,
 ) {
-  const rangeFactor =
-    nonNegativeOrDefault(
-      observer.range,
-      1,
-    );
-
   return (
     hexRadius *
     getBaseVisualRange(unit) *
-    rangeFactor
+    nonNegativeOrDefault(
+      observer.range,
+      1,
+    )
   );
 }
 
@@ -222,9 +233,106 @@ function drawSelection(
   context.strokeStyle =
     "#c5dfb5";
 
-  context.lineWidth = 2;
-  context.stroke();
+  context.lineWidth =
+    2;
 
+  context.stroke();
+  context.restore();
+}
+
+function drawDebugSelection(
+  context,
+  point,
+) {
+  const outerSize =
+    35;
+
+  const cornerLength =
+    10;
+
+  context.save();
+
+  context.strokeStyle =
+    "#66e0ff";
+
+  context.lineWidth =
+    2;
+
+  context.setLineDash(
+    [5, 4],
+  );
+
+  context.beginPath();
+
+  context.moveTo(
+    point.x - outerSize,
+    point.y - outerSize +
+      cornerLength,
+  );
+
+  context.lineTo(
+    point.x - outerSize,
+    point.y - outerSize,
+  );
+
+  context.lineTo(
+    point.x - outerSize +
+      cornerLength,
+    point.y - outerSize,
+  );
+
+  context.moveTo(
+    point.x + outerSize -
+      cornerLength,
+    point.y - outerSize,
+  );
+
+  context.lineTo(
+    point.x + outerSize,
+    point.y - outerSize,
+  );
+
+  context.lineTo(
+    point.x + outerSize,
+    point.y - outerSize +
+      cornerLength,
+  );
+
+  context.moveTo(
+    point.x + outerSize,
+    point.y + outerSize -
+      cornerLength,
+  );
+
+  context.lineTo(
+    point.x + outerSize,
+    point.y + outerSize,
+  );
+
+  context.lineTo(
+    point.x + outerSize -
+      cornerLength,
+    point.y + outerSize,
+  );
+
+  context.moveTo(
+    point.x - outerSize +
+      cornerLength,
+    point.y + outerSize,
+  );
+
+  context.lineTo(
+    point.x - outerSize,
+    point.y + outerSize,
+  );
+
+  context.lineTo(
+    point.x - outerSize,
+    point.y + outerSize -
+      cornerLength,
+  );
+
+  context.stroke();
   context.restore();
 }
 
@@ -244,18 +352,21 @@ function drawTankIcon(
   );
 
   context.rotate(
-    unit.hullDirection ?? 0,
+    unit.hullDirection ??
+    0,
   );
 
   context.globalAlpha =
     destroyed
-      ? context.globalAlpha * 0.55
+      ? context.globalAlpha *
+        0.55
       : context.globalAlpha;
 
   context.fillStyle =
     destroyed
       ? "#333735"
-      : unit.side === "friendly"
+      : unit.side ===
+          "friendly"
         ? "#73957e"
         : "#a35f59";
 
@@ -264,7 +375,8 @@ function drawTankIcon(
       ? "#9b9f9c"
       : "#edf4ef";
 
-  context.lineWidth = 1.5;
+  context.lineWidth =
+    1.5;
 
   context.fillRect(
     -14,
@@ -314,19 +426,21 @@ function drawTankIcon(
 
   context.rotate(
     unit.turretDirection ??
-      unit.hullDirection ??
-      0,
+    unit.hullDirection ??
+    0,
   );
 
   context.globalAlpha =
     destroyed
-      ? context.globalAlpha * 0.55
+      ? context.globalAlpha *
+        0.55
       : context.globalAlpha;
 
   context.fillStyle =
     destroyed
       ? "#454947"
-      : unit.side === "friendly"
+      : unit.side ===
+          "friendly"
         ? "#9ec2aa"
         : "#c98178";
 
@@ -335,7 +449,8 @@ function drawTankIcon(
       ? "#9b9f9c"
       : "#edf4ef";
 
-  context.lineWidth = 1.5;
+  context.lineWidth =
+    1.5;
 
   context.beginPath();
 
@@ -365,7 +480,6 @@ function drawTankIcon(
   context.stroke();
   context.restore();
 }
-
 function drawObserverIcon(
   context,
   unit,
@@ -380,7 +494,8 @@ function drawObserverIcon(
 
   context.globalAlpha =
     unit.destroyed
-      ? context.globalAlpha * 0.5
+      ? context.globalAlpha *
+        0.5
       : context.globalAlpha;
 
   context.fillStyle =
@@ -393,7 +508,8 @@ function drawObserverIcon(
       ? "#989898"
       : "#ffd2c4";
 
-  context.lineWidth = 2;
+  context.lineWidth =
+    2;
 
   context.fillRect(
     -15,
@@ -480,7 +596,8 @@ function drawAtgmIcon(
 
   context.globalAlpha =
     unit.destroyed
-      ? context.globalAlpha * 0.5
+      ? context.globalAlpha *
+        0.5
       : context.globalAlpha;
 
   context.fillStyle =
@@ -493,7 +610,8 @@ function drawAtgmIcon(
       ? "#989898"
       : "#ffd1c6";
 
-  context.lineWidth = 2;
+  context.lineWidth =
+    2;
 
   context.beginPath();
 
@@ -547,7 +665,8 @@ function drawContactIcon(
   const confidenceAlpha =
     clamp(
       0.45 +
-        normalizedConfidence * 0.45,
+        normalizedConfidence *
+        0.45,
       0.45,
       0.9,
     );
@@ -584,7 +703,8 @@ function drawDestroyedMarker(
   context.strokeStyle =
     "#ff8d7f";
 
-  context.lineWidth = 3;
+  context.lineWidth =
+    3;
 
   context.beginPath();
 
@@ -649,7 +769,8 @@ function drawUnitLabel(
   context.fillStyle =
     unit.destroyed
       ? "#b7b7b7"
-      : unit.side === "friendly"
+      : unit.side ===
+          "friendly"
         ? "#edf4ef"
         : "#ffd2c8";
 
@@ -671,8 +792,10 @@ function drawUnitLabel(
   const baseLabel =
     unidentifiedEnemy
       ? "미확인"
-      : unit.name ??
-        unit.id;
+      : (
+          unit.name ??
+          unit.id
+        );
 
   const label =
     unit.destroyed
@@ -731,13 +854,13 @@ function drawHealthBar(
     Math.max(
       1,
       unit.health.maximum ??
-        1,
+      1,
     );
 
   const currentHealth =
     clamp(
       unit.health.current ??
-        maximumHealth,
+      maximumHealth,
       0,
       maximumHealth,
     );
@@ -746,8 +869,11 @@ function drawHealthBar(
     currentHealth /
     maximumHealth;
 
-  const width = 30;
-  const height = 4;
+  const width =
+    30;
+
+  const height =
+    4;
 
   context.save();
 
@@ -778,7 +904,8 @@ function drawHealthBar(
   context.strokeStyle =
     "rgba(235, 242, 237, 0.65)";
 
-  context.lineWidth = 1;
+  context.lineWidth =
+    1;
 
   context.strokeRect(
     point.x - width / 2,
@@ -818,7 +945,8 @@ function drawObservationCone(
   context.strokeStyle =
     strokeStyle;
 
-  context.lineWidth = 2;
+  context.lineWidth =
+    2;
 
   context.setLineDash(
     lineDash,
@@ -846,7 +974,6 @@ function drawObservationCone(
   context.stroke();
   context.restore();
 }
-
 function drawCrewObservationAreas(
   context,
   unit,
@@ -1001,7 +1128,8 @@ function drawReconArea(
   context.strokeStyle =
     "rgba(150, 230, 184, 0.7)";
 
-  context.lineWidth = 2;
+  context.lineWidth =
+    2;
 
   context.setLineDash(
     [7, 5],
@@ -1072,7 +1200,8 @@ function drawTurretDirections(
   }
 
   const currentDirection =
-    unit.turretDirection ?? 0;
+    unit.turretDirection ??
+    0;
 
   const targetDirection =
     unit.turretControl
@@ -1081,7 +1210,8 @@ function drawTurretDirections(
 
   context.save();
 
-  context.lineWidth = 2;
+  context.lineWidth =
+    2;
 
   context.strokeStyle =
     "#a9d5ff";
@@ -1097,11 +1227,14 @@ function drawTurretDirections(
     point.x +
       Math.cos(
         currentDirection,
-      ) * 52,
+      ) *
+      52,
+
     point.y +
       Math.sin(
         currentDirection,
-      ) * 52,
+      ) *
+      52,
   );
 
   context.stroke();
@@ -1124,17 +1257,19 @@ function drawTurretDirections(
     point.x +
       Math.cos(
         targetDirection,
-      ) * 68,
+      ) *
+      68,
+
     point.y +
       Math.sin(
         targetDirection,
-      ) * 68,
+      ) *
+      68,
   );
 
   context.stroke();
   context.restore();
 }
-
 function drawDestination(
   context,
   unit,
@@ -1169,7 +1304,8 @@ function drawDestination(
   context.strokeStyle =
     "#d7b46a";
 
-  context.lineWidth = 3;
+  context.lineWidth =
+    3;
 
   context.setLineDash(
     [7, 5],
@@ -1233,7 +1369,8 @@ function drawFireTarget(
   context.strokeStyle =
     "#ff9a7f";
 
-  context.lineWidth = 2;
+  context.lineWidth =
+    2;
 
   context.beginPath();
 
@@ -1312,7 +1449,7 @@ function drawDetectedUnitIcon(
 
   if (
     unit.type ===
-      "artillery-observer"
+    "artillery-observer"
   ) {
     drawObserverIcon(
       context,
@@ -1321,7 +1458,7 @@ function drawDetectedUnitIcon(
     );
   } else if (
     unit.type ===
-      "atgm-team"
+    "atgm-team"
   ) {
     drawAtgmIcon(
       context,
@@ -1338,11 +1475,11 @@ function drawDetectedUnitIcon(
 
   context.restore();
 }
-
 export function drawUnits({
   context,
   units,
   selectedUnitId,
+  debugSelectedUnitId,
   developerMode,
   hexRadius,
   hexToWorld,
@@ -1358,7 +1495,7 @@ export function drawUnits({
     .filter(
       (unit) =>
         unit.side ===
-          "friendly",
+        "friendly",
     )
     .forEach(
       (unit) => {
@@ -1415,6 +1552,18 @@ export function drawUnits({
         !unit.destroyed
       ) {
         drawSelection(
+          context,
+          point,
+        );
+      }
+
+      if (
+        developerMode &&
+        debugSelectedUnitId &&
+        unit.id ===
+          debugSelectedUnitId
+      ) {
+        drawDebugSelection(
           context,
           point,
         );
