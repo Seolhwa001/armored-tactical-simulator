@@ -2,7 +2,7 @@
 // ATS PROJECT
 // File      : src/controllers/mapInputController.js
 // Sprint    : 3.9.1
-// Revision  : R9
+// Revision  : R10
 // Build     : 2026-08-05
 // Type      : FULL REPLACEMENT
 // Purpose   : Map input with isolated developer inspection and detection-first fog refresh
@@ -389,22 +389,7 @@ export function createMapInputController({
     unit,
     hex,
   ) {
-    const hiddenBefore =
-      new Set(
-        getUnits()
-          .filter(
-            (enemy) =>
-              enemy.side ===
-                "enemy" &&
-              !enemy.visible,
-          )
-          .map(
-            (enemy) =>
-              enemy.id,
-          ),
-      );
-
-    const affected =
+    const action =
       applyReconByFire(
         state.runtimeScenario,
         unit,
@@ -412,43 +397,19 @@ export function createMapInputController({
         state.turn,
       );
 
-    addFireEffect(
-      state.effects,
-      unit,
-      hex,
-      ammunitionTypes.HEAT,
-      {
-        reconByFire:
-          true,
-      },
-    );
-
-    updateDetection(
-      state.runtimeScenario,
-      state.turn,
-    );
-
-    affected.forEach(
-      (enemy) => {
-        if (
-          hiddenBefore.has(
-            enemy.id,
-          ) &&
-          enemy.visible
-        ) {
-          addContactEffect(
-            state.effects,
-            enemy,
-          );
-        }
-      },
-    );
+    if (!action) {
+      setMessage(
+        "화력수색 목표를 지정하지 못했습니다.",
+      );
+      return;
+    }
 
     setMessage(
-      `화력수색 시작: ${hex.column}, ${hex.row}`,
+      `화력수색 목표 지정: ${hex.column}, ${hex.row}`,
     );
 
-    startEffectLoop();
+    updateSummary();
+    render();
   }
 
   function findVisibleEnemyAtHex(

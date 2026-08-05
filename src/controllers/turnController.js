@@ -2,11 +2,15 @@
 // ATS PROJECT
 // File      : src/controllers/turnController.js
 // Sprint    : 3.9.1
-// Revision  : R2
+// Revision  : R3
 // Build     : 2026-08-05
 // Type      : FULL REPLACEMENT
 // Purpose   : Turn execution and persistent-action processing
 // ============================================================
+
+import {
+  executeDirectedAction,
+} from "../engine/fireControl.js";
 
 export function createTurnController({
   state,
@@ -203,6 +207,7 @@ export function createTurnController({
           beginReloading,
           registerAdjustedShot,
           acceptHunterKillerTarget,
+          executeDirectedAction,
         },
       );
 
@@ -213,30 +218,42 @@ export function createTurnController({
         )
           ? result.adjustedShots
           : [],
+
+      completedDirectedActions:
+        Array.isArray(
+          result?.completedDirectedActions,
+        )
+          ? result.completedDirectedActions
+          : [],
     };
   }
 
-  function addReconByFireEffects() {
-    getUnits()
-      .filter(
-        (unit) =>
-          unit.side === "friendly" &&
-          !unit.destroyed &&
-          unit.action?.type ===
-            unitActions.RECON_BY_FIRE &&
-          unit.action.targetHex,
-      )
-      .forEach((unit) => {
-        addFireEffect(
-          state.effects,
-          unit,
-          unit.action.targetHex,
-          ammunitionTypes.HEAT,
-          {
-            reconByFire: true,
-          },
-        );
-      });
+
+  function addDirectedActionFeedback(
+    completedAction,
+  ) {
+    if (
+      !completedAction?.unit ||
+      !completedAction?.targetHex ||
+      !completedAction?.result?.success
+    ) {
+      return;
+    }
+
+    addFireEffect(
+      state.effects,
+      completedAction.unit,
+      completedAction.targetHex,
+      completedAction.result.resourceType ??
+        ammunitionTypes.HEAT,
+      {
+        reconByFire: true,
+      },
+    );
+
+    setMessage(
+      "화력수색 실행 완료",
+    );
   }
 
   function addNewContactEffects(
@@ -320,11 +337,14 @@ export function createTurnController({
         movingUnitIds,
       );
 
-    addReconByFireEffects();
-
     actionResult.adjustedShots.forEach(
       addAdjustedShotFeedback,
     );
+
+    actionResult.completedDirectedActions
+      .forEach(
+        addDirectedActionFeedback,
+      );
 
     state.turn += 1;
 
@@ -385,6 +405,9 @@ export function createTurnController({
 
       adjustedShots:
         actionResult.adjustedShots,
+
+      completedDirectedActions:
+        actionResult.completedDirectedActions,
 
       newContacts,
       movingUnitIds,
