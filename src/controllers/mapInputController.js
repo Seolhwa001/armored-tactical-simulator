@@ -2,32 +2,47 @@
 // ATS PROJECT
 // File      : src/controllers/mapInputController.js
 // Sprint    : 3.9.1
-// Revision  : R7
+// Revision  : R9
 // Build     : 2026-08-05
 // Type      : FULL REPLACEMENT
-// Purpose   : Map input, shared hex targeting, detection debug, and exposure debug
+// Purpose   : Map input with isolated developer inspection and detection-first fog refresh
 // ============================================================
 
 import {
   getHexDirection,
 } from "../engine/hexGeometry.js";
 
-const DETECTION_STAGE_LABELS = Object.freeze({
-  0: "HIDDEN",
-  1: "CONTACT",
-  2: "DETECTED",
-  3: "IDENTIFIED",
-});
+const DETECTION_STAGE_LABELS =
+  Object.freeze({
+    0: "HIDDEN",
+    1: "CONTACT",
+    2: "DETECTED",
+    3: "IDENTIFIED",
+  });
 
-const DETECTION_CREW_ROLE_LABELS = Object.freeze({
-  commander: "전차장",
-  gunner: "포수",
-  driver: "조종수",
-  loader: "탄약수",
-  "commander-cps": "CPS",
-  "crew-recon": "360도 정찰",
-  "recon-by-fire": "화력수색",
-});
+const DETECTION_CREW_ROLE_LABELS =
+  Object.freeze({
+    commander:
+      "전차장",
+
+    gunner:
+      "포수",
+
+    driver:
+      "조종수",
+
+    loader:
+      "탄약수",
+
+    "commander-cps":
+      "CPS",
+
+    "crew-recon":
+      "360도 정찰",
+
+    "recon-by-fire":
+      "화력수색",
+  });
 
 export function createMapInputController({
   state,
@@ -73,7 +88,8 @@ export function createMapInputController({
       getUnits().find(
         (unit) =>
           unit.id === unitId,
-      ) ?? null
+      ) ??
+      null
     );
   }
 
@@ -212,15 +228,19 @@ export function createMapInputController({
       `탐지 단계 ${getDetectionStageLabel(
         unit,
       )}`,
+
       `탐지 신뢰도 ${getDetectionConfidenceLabel(
         unit,
       )}`,
+
       `탐지 차량 ${getDetectionUnitLabel(
         unit,
       )}`,
+
       `탐지 승무원 ${getDetectionCrewRoleLabel(
         unit,
       )}`,
+
       `화력수색 노출 ${getTemporaryExposureLabel(
         unit,
       )}`,
@@ -228,6 +248,11 @@ export function createMapInputController({
   }
 
   function refreshFogAndRender() {
+    updateDetection(
+      state.runtimeScenario,
+      state.turn,
+    );
+
     const changed =
       updateFog(
         state.fog,
@@ -236,13 +261,9 @@ export function createMapInputController({
       );
 
     if (changed) {
-      mapRenderer.invalidateFog();
+      mapRenderer
+        .invalidateFog();
     }
-
-    updateDetection(
-      state.runtimeScenario,
-      state.turn,
-    );
 
     updateSummary();
     render();
@@ -274,7 +295,10 @@ export function createMapInputController({
     const result =
       planUnitMovement({
         unit,
-        destination: hex,
+
+        destination:
+          hex,
+
         getNeighbors,
         getMovementCost,
       });
@@ -326,7 +350,9 @@ export function createMapInputController({
         unit,
         hex,
         direction,
-        turn: state.turn,
+
+        turn:
+          state.turn,
       });
 
       return;
@@ -392,7 +418,8 @@ export function createMapInputController({
       hex,
       ammunitionTypes.HEAT,
       {
-        reconByFire: true,
+        reconByFire:
+          true,
       },
     );
 
@@ -468,9 +495,14 @@ export function createMapInputController({
       state.selectedCommand
         .onTarget({
           unit,
-          targetUnit: target,
+
+          targetUnit:
+            target,
+
           hex,
-          turn: state.turn,
+
+          turn:
+            state.turn,
         });
 
       return;
@@ -489,7 +521,8 @@ export function createMapInputController({
 
     firePanel.setTarget(
       hex,
-      enemy?.id ?? null,
+      enemy?.id ??
+      null,
     );
   }
 
@@ -639,8 +672,11 @@ export function createMapInputController({
     worldX,
     worldY,
   ) {
-    let nearest = null;
-    let distance = Infinity;
+    let nearest =
+      null;
+
+    let distance =
+      Infinity;
 
     state.terrain.forEach(
       (hex) => {
@@ -653,8 +689,11 @@ export function createMapInputController({
 
         const current =
           Math.hypot(
-            worldX - point.x,
-            worldY - point.y,
+            worldX -
+              point.x,
+
+            worldY -
+              point.y,
           );
 
         if (
@@ -701,8 +740,11 @@ export function createMapInputController({
 
         return (
           Math.hypot(
-            worldX - point.x,
-            worldY - point.y,
+            worldX -
+              point.x,
+
+            worldY -
+              point.y,
           ) <= 30
         );
       },
@@ -746,6 +788,11 @@ export function createMapInputController({
   function showTappedUnitInformation(
     tappedUnit,
   ) {
+    if (state.developerMode) {
+      state.debugSelectedUnitId =
+        tappedUnit.id;
+    }
+
     const normalMessage =
       getNormalUnitMessage(
         tappedUnit,
@@ -776,7 +823,8 @@ export function createMapInputController({
     clientY,
   ) {
     const rectangle =
-      canvas.getBoundingClientRect();
+      canvas
+        .getBoundingClientRect();
 
     const world = {
       x:
@@ -848,4 +896,4 @@ export function createMapInputController({
     handleMapTap,
     handleHexSelection,
   };
-          }
+}
