@@ -2,10 +2,10 @@
 // ATS PROJECT
 // File      : src/engine/detection.js
 // Sprint    : 3.9.1
-// Revision  : R5
+// Revision  : R6
 // Build     : 2026-08-05
-// Type      : FULL REPLACEMENT
-// Purpose   : Directional detection using shared hex geometry
+// Type      : PATCHED FULL REPLACEMENT
+// Purpose   : Directional detection using shared geometry and angle utilities
 // ============================================================
 
 import {
@@ -13,16 +13,21 @@ import {
   getHexDistance,
 } from "./hexGeometry.js";
 
+import {
+  normalizeAngle,
+} from "./mathUtils.js";
+
 export {
   getHexDistance,
 } from "./hexGeometry.js";
 
-export const DETECTION_STAGES = Object.freeze({
-  HIDDEN: 0,
-  CONTACT: 1,
-  DETECTED: 2,
-  IDENTIFIED: 3,
-});
+export const DETECTION_STAGES =
+  Object.freeze({
+    HIDDEN: 0,
+    CONTACT: 1,
+    DETECTED: 2,
+    IDENTIFIED: 3,
+  });
 
 const ACTION_RECON =
   "recon";
@@ -80,27 +85,6 @@ function positiveOrDefault(
   );
 }
 
-function normalizeAngle(angle) {
-  let normalized =
-    finiteOrDefault(
-      angle,
-      0,
-    ) %
-    (Math.PI * 2);
-
-  if (normalized > Math.PI) {
-    normalized -=
-      Math.PI * 2;
-  }
-
-  if (normalized < -Math.PI) {
-    normalized +=
-      Math.PI * 2;
-  }
-
-  return normalized;
-}
-
 function getAbsoluteAngleDifference(
   first,
   second,
@@ -128,7 +112,9 @@ function isReconActive(unit) {
   );
 }
 
-function getActiveCrewObservers(unit) {
+function getActiveCrewObservers(
+  unit,
+) {
   const observers =
     unit.crewObservation
       ?.observers;
@@ -142,8 +128,10 @@ function getActiveCrewObservers(unit) {
   )
     .filter(
       ([, observer]) =>
-        observer?.enabled !== false &&
-        observer?.observing === true,
+        observer?.enabled !==
+          false &&
+        observer?.observing ===
+          true,
     )
     .map(
       ([
@@ -199,7 +187,8 @@ function evaluateCrewObserver(
 
     identificationFactor:
       nonNegativeOrDefault(
-        observer.identificationFactor,
+        observer
+          .identificationFactor,
         DEFAULT_IDENTIFICATION_FACTOR,
       ),
   };
@@ -495,7 +484,8 @@ function evaluateDetectionCandidate(
 
   const identificationFactor =
     nonNegativeOrDefault(
-      observation.identificationFactor,
+      observation
+        .identificationFactor,
       DEFAULT_IDENTIFICATION_FACTOR,
     );
 
@@ -508,7 +498,6 @@ function evaluateDetectionCandidate(
   const effectiveVisualRange =
     Math.max(
       0,
-
       visualRange *
         observerRange -
         concealmentPenalty,
@@ -517,7 +506,6 @@ function evaluateDetectionCandidate(
   const effectiveIdentificationRange =
     Math.max(
       0,
-
       identificationRange *
         observerRange *
         identificationFactor -
@@ -549,10 +537,12 @@ function evaluateDetectionCandidate(
 
   return {
     stage,
+
     role:
       observation.role,
 
     effectiveVisualRange,
+
     effectiveIdentificationRange,
   };
 }
