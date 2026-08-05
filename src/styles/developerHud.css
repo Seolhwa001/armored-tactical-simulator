@@ -1,11 +1,11 @@
 /* ============================================================
    ATS PROJECT
    File      : src/styles/developerHud.css
-   Sprint    : 3.9.1
-   Revision  : R2
+   Sprint    : 3.9.2
+   Revision  : R3
    Build     : 2026-08-05
    Type      : FULL REPLACEMENT
-   Purpose   : Battle-only selected-unit developer HUD styling
+   Purpose   : Collapsible mobile-safe developer HUD styling
    ============================================================ */
 
 .developer-hud {
@@ -115,6 +115,43 @@
   font-size: 9px;
   font-weight: 900;
   letter-spacing: 0.06em;
+}
+
+
+.developer-hud__controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.developer-hud__toggle {
+  min-height: 28px;
+  padding: 3px 7px;
+  color: #e8f3eb;
+  background: rgba(8, 15, 12, 0.58);
+  border: 1px solid rgba(155, 213, 170, 0.52);
+  border-radius: 6px;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.developer-hud__toggle:focus-visible {
+  outline: 2px solid #9bd5aa;
+  outline-offset: 2px;
+}
+
+.developer-hud.is-collapsed {
+  max-height: none;
+}
+
+.developer-hud.is-collapsed .developer-hud__header {
+  border-bottom: 0;
+}
+
+.developer-hud.is-collapsed .developer-hud__content {
+  display: none;
 }
 
 .developer-hud__content {
@@ -229,7 +266,7 @@
         calc(100vw - 12px)
       );
 
-    max-height: 54vh;
+    max-height: calc(100dvh - 210px);
 
     font-size: 10px;
   }
