@@ -1,4 +1,12 @@
-// src/app.js — 전체 교체
+// ============================================================
+// ATS PROJECT
+// File      : src/app.js
+// Sprint    : 3.9.1
+// Revision  : R1
+// Build     : 2026-08-05
+// Type      : PATCHED FULL REPLACEMENT
+// Purpose   : Application integration with Developer HUD and shared geometry
+// ============================================================
 
 import {
   advanceUnitMovement,
@@ -14,15 +22,19 @@ import {
 
 import {
   DETECTION_STAGES,
-  getHexDistance,
   isUnitVisible,
   updateDetection,
 } from "./engine/detection.js";
 
 import {
+  getHexDistance,
+} from "./engine/hexGeometry.js";
+
+import {
   applyReconByFire,
   processPersistentActions,
   setPersistentAction,
+  synchronizeCrewObservationDirections,
 } from "./engine/actions.js";
 
 import { UNIT_ACTIONS } from "./engine/constants/actionConstants.js";
@@ -95,6 +107,10 @@ import {
 import {
   bindApplicationEvents,
 } from "./ui/eventBindings.js";
+
+import {
+  createDeveloperHud,
+} from "./ui/developerHud.js";
 
 import {
   createGameState,
@@ -282,6 +298,7 @@ let commandController = null;
 let scenarioController = null;
 let turnController = null;
 let mapInputController = null;
+let developerHud = null;
 
 function getUnits() {
   return state.runtimeScenario?.units ?? [];
@@ -308,6 +325,26 @@ function getPlayerTank() {
 
 function getSelectedUnit() {
   return getPlayerTank();
+}
+
+function getDebugSelectedUnit() {
+  if (!state.runtimeScenario) {
+    return null;
+  }
+
+  const unitId =
+    state.debugSelectedUnitId ??
+    state.selectedUnitId;
+
+  if (!unitId) {
+    return null;
+  }
+
+  return (
+    state.runtimeScenario.units.find(
+      (unit) => unit.id === unitId,
+    ) ?? null
+  );
 }
 
 function isUnitMoving(unit) {
@@ -387,6 +424,8 @@ function updateSummary() {
     unit
       ? getTurretSummary(unit)
       : "-";
+
+  developerHud?.render();
 }
 
 function updateTurnLabel(turn) {
@@ -511,6 +550,9 @@ function render(
         selectedUnitId:
           state.selectedUnitId,
 
+        debugSelectedUnitId:
+          state.debugSelectedUnitId,
+
         developerMode:
           state.developerMode,
       });
@@ -529,6 +571,11 @@ function render(
 }
 
 function refreshFogAndRender() {
+  updateDetection(
+    state.runtimeScenario,
+    state.turn,
+  );
+
   const changed = updateFog(
     state.fog,
     state.terrain,
@@ -538,11 +585,6 @@ function refreshFogAndRender() {
   if (changed) {
     mapRenderer.invalidateFog();
   }
-
-  updateDetection(
-    state.runtimeScenario,
-    state.turn,
-  );
 
   updateSummary();
   render();
@@ -554,6 +596,30 @@ function startEffectLoop() {
     render,
   );
 }
+
+developerHud = createDeveloperHud({
+  parentElement:
+    document.body,
+
+  getDeveloperMode() {
+    return state.developerMode;
+  },
+
+  getActiveScreen() {
+    return state.activeScreen;
+  },
+
+  getRuntimeScenario() {
+    return state.runtimeScenario;
+  },
+
+  getSelectedUnit:
+    getDebugSelectedUnit,
+
+  getTurn() {
+    return state.turn;
+  },
+});
 
 commandPanel = createCommandPanel({
   container:
@@ -699,6 +765,7 @@ scenarioController =
     generateTerrain,
     getAvailablePlacementHexes,
     ensureUnitHexesPassable,
+    synchronizeCrewObservationDirections,
     resetFog,
     clearEffects,
     updateDetection,
@@ -814,6 +881,8 @@ function showScreen(name) {
   elements.battleScreen.hidden =
     menu;
 
+  developerHud?.render();
+
   if (!menu) {
     requestAnimationFrame(() => {
       mapRenderer.resize();
@@ -821,6 +890,7 @@ function showScreen(name) {
       scenarioController
         .centerCamera();
 
+      updateSummary();
       render();
     });
   }
@@ -956,12 +1026,23 @@ bindApplicationEvents({
     state.developerMode =
       enabled;
 
+    if (!enabled) {
+      state.debugSelectedUnitId =
+        state.selectedUnitId;
+    } else if (
+      !state.debugSelectedUnitId
+    ) {
+      state.debugSelectedUnitId =
+        state.selectedUnitId;
+    }
+
     mapRenderer
       .invalidateTerrain();
 
     mapRenderer
       .invalidateFog();
 
+    updateSummary();
     render();
   },
 
