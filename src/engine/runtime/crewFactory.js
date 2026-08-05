@@ -2,55 +2,63 @@
 // ATS PROJECT
 // File      : src/engine/runtime/crewFactory.js
 // Sprint    : 3.9.1
-// Revision  : R2
+// Revision  : R3
 // Build     : 2026-08-05
-// Type      : FULL REPLACEMENT
-// Purpose   : Crew observation, CPS, and Hunter Killer state
+// Type      : PATCHED FULL REPLACEMENT
+// Purpose   : Crew observation factory using shared angle normalization
 // ============================================================
+
+import {
+  normalizeAngle,
+} from "../mathUtils.js";
 
 import {
   CREW_ROLES,
   HUNTER_KILLER_STATES,
 } from "./runtimeConstants.js";
 
-const DEFAULT_IDENTIFICATION_FACTOR = 1;
-const COMMANDER_SIGHT_ROTATION_RATE = Math.PI / 4;
-const LOADER_SIDE_OFFSET = Math.PI / 2;
+const DEFAULT_IDENTIFICATION_FACTOR =
+  1;
 
-function finiteOrDefault(value, fallback) {
+const COMMANDER_SIGHT_ROTATION_RATE =
+  Math.PI / 4;
+
+const LOADER_SIDE_OFFSET =
+  Math.PI / 2;
+
+function finiteOrDefault(
+  value,
+  fallback,
+) {
   return Number.isFinite(value)
     ? value
     : fallback;
 }
 
-function nonNegativeOrDefault(value, fallback) {
+function nonNegativeOrDefault(
+  value,
+  fallback,
+) {
   return Math.max(
     0,
-    finiteOrDefault(value, fallback),
+    finiteOrDefault(
+      value,
+      fallback,
+    ),
   );
 }
 
-function positiveOrDefault(value, fallback) {
+function positiveOrDefault(
+  value,
+  fallback,
+) {
   return Math.max(
     0.01,
-    finiteOrDefault(value, fallback),
+    finiteOrDefault(
+      value,
+      fallback,
+    ),
   );
-}
-
-function normalizeAngle(angle) {
-  let normalized =
-    finiteOrDefault(angle, 0) %
-    (Math.PI * 2);
-
-  if (normalized > Math.PI) {
-    normalized -= Math.PI * 2;
-  }
-
-  if (normalized < -Math.PI) {
-    normalized += Math.PI * 2;
-  }
-
-  return normalized;
 }
 
 function createCrewObserver({
@@ -87,15 +95,26 @@ function createCrewObserver({
     enabled: true,
     observing,
 
-    direction: safeDirection,
-    targetDirection: safeDirection,
-    assignedDirection: null,
+    direction:
+      safeDirection,
 
-    fieldOfView: safeFieldOfView,
-    baseFieldOfView: safeFieldOfView,
+    targetDirection:
+      safeDirection,
 
-    range: safeRange,
-    baseRange: safeRange,
+    assignedDirection:
+      null,
+
+    fieldOfView:
+      safeFieldOfView,
+
+    baseFieldOfView:
+      safeFieldOfView,
+
+    range:
+      safeRange,
+
+    baseRange:
+      safeRange,
 
     identificationFactor:
       safeIdentificationFactor,
@@ -104,7 +123,9 @@ function createCrewObserver({
       safeIdentificationFactor,
 
     observationMode,
-    lastUpdatedTurn: null,
+
+    lastUpdatedTurn:
+      null,
   };
 }
 
@@ -112,42 +133,55 @@ function createCommanderSight(
   hullDirection,
 ) {
   const safeDirection =
-    normalizeAngle(hullDirection);
+    normalizeAngle(
+      hullDirection,
+    );
 
   const fieldOfView =
     Math.PI / 3;
 
-  const range = 1.18;
-  const identificationFactor = 1.2;
+  const range =
+    1.18;
+
+  const identificationFactor =
+    1.2;
 
   return {
     operational: true,
     active: false,
 
-    direction: safeDirection,
-    targetDirection: safeDirection,
+    direction:
+      safeDirection,
+
+    targetDirection:
+      safeDirection,
 
     rotationRate:
       COMMANDER_SIGHT_ROTATION_RATE,
 
     fieldOfView,
+
     baseFieldOfView:
       fieldOfView,
 
     range,
-    baseRange: range,
+
+    baseRange:
+      range,
 
     identificationFactor,
 
     baseIdentificationFactor:
       identificationFactor,
 
-    targetUnitId: null,
+    targetUnitId:
+      null,
 
     locked: false,
     tracking: false,
 
-    lastUpdatedTurn: null,
+    lastUpdatedTurn:
+      null,
   };
 }
 
@@ -156,13 +190,20 @@ function createHunterKillerState() {
     enabled: true,
 
     state:
-      HUNTER_KILLER_STATES.SEARCHING,
+      HUNTER_KILLER_STATES
+        .SEARCHING,
 
-    detectedTargetUnitId: null,
-    designatedTargetUnitId: null,
-    handedOffTargetUnitId: null,
+    detectedTargetUnitId:
+      null,
 
-    lastDetectedTurn: null,
+    designatedTargetUnitId:
+      null,
+
+    handedOffTargetUnitId:
+      null,
+
+    lastDetectedTurn:
+      null,
   };
 }
 
@@ -170,7 +211,9 @@ export function createCrewObservation({
   hullDirection = 0,
 } = {}) {
   const safeHullDirection =
-    normalizeAngle(hullDirection);
+    normalizeAngle(
+      hullDirection,
+    );
 
   const loaderInitialDirection =
     normalizeAngle(
@@ -188,11 +231,14 @@ export function createCrewObservation({
           fieldOfView:
             Math.PI / 2,
 
-          range: 1,
+          range:
+            1,
 
-          identificationFactor: 1,
+          identificationFactor:
+            1,
 
-          observing: true,
+          observing:
+            true,
 
           observationMode:
             "visual",
@@ -206,11 +252,14 @@ export function createCrewObservation({
           fieldOfView:
             Math.PI / 3,
 
-          range: 0.85,
+          range:
+            0.85,
 
-          identificationFactor: 0.9,
+          identificationFactor:
+            0.9,
 
-          observing: true,
+          observing:
+            true,
 
           observationMode:
             "turret-coupled",
@@ -224,11 +273,14 @@ export function createCrewObservation({
           fieldOfView:
             Math.PI / 2.5,
 
-          range: 0.55,
+          range:
+            0.55,
 
-          identificationFactor: 0.45,
+          identificationFactor:
+            0.45,
 
-          observing: true,
+          observing:
+            true,
 
           observationMode:
             "hull-forward",
@@ -242,11 +294,14 @@ export function createCrewObservation({
           fieldOfView:
             Math.PI / 2.2,
 
-          range: 0.6,
+          range:
+            0.6,
 
-          identificationFactor: 0.5,
+          identificationFactor:
+            0.5,
 
-          observing: true,
+          observing:
+            true,
 
           observationMode:
             "periscope",
