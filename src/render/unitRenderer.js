@@ -2,7 +2,7 @@
 // ATS PROJECT
 // File      : src/render/unitRenderer.js
 // Sprint    : 3.9.1
-// Revision  : R10
+// Revision  : R11
 // Build     : 2026-08-05
 // Type      : PATCHED FULL REPLACEMENT
 // Purpose   : Unit rendering with separate control and debug selections
@@ -1062,9 +1062,7 @@ function drawCpsObservationArea(
   point,
   hexRadius,
 ) {
-  if (
-    !isCpsDisplayActive(unit)
-  ) {
+  if (!isCpsDisplayActive(unit)) {
     return;
   }
 
@@ -1091,10 +1089,45 @@ function drawCpsObservationArea(
     cpsRadius,
     "rgba(255, 240, 145, 0.95)",
     "rgba(255, 240, 145, 0.08)",
-    sight.locked
-      ? []
-      : [8, 5],
+    [],
   );
+
+  if (
+    Number.isFinite(
+      sight.targetDirection,
+    ) &&
+    (
+      sight.locked !== true ||
+      sight.tracking === true
+    )
+  ) {
+    context.save();
+    context.globalAlpha =
+      sight.locked ? 0.35 : 0.8;
+    context.strokeStyle =
+      "rgba(92, 226, 255, 0.95)";
+    context.fillStyle =
+      "rgba(92, 226, 255, 0.95)";
+    context.lineWidth = 2;
+    context.setLineDash([6, 5]);
+    context.beginPath();
+    context.moveTo(point.x, point.y);
+    const targetX =
+      point.x +
+      Math.cos(sight.targetDirection) *
+        cpsRadius;
+    const targetY =
+      point.y +
+      Math.sin(sight.targetDirection) *
+        cpsRadius;
+    context.lineTo(targetX, targetY);
+    context.stroke();
+    context.setLineDash([]);
+    context.beginPath();
+    context.arc(targetX, targetY, 4, 0, Math.PI * 2);
+    context.fill();
+    context.restore();
+  }
 }
 
 function isReconActive(unit) {
