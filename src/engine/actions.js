@@ -1,15 +1,30 @@
-// src/engine/actions.js — 전체 교체
+// ============================================================
+// ATS PROJECT
+// File      : src/engine/actions.js
+// Sprint    : 3.9.1
+// Revision  : R4
+// Build     : 2026-08-05
+// Type      : FULL REPLACEMENT
+// Purpose   : Crew actions, CPS tracking, and shared hex targeting
+// ============================================================
 
 import { UNIT_ACTIONS } from "./constants/actionConstants.js";
 import { createIdleAction } from "./factories/actionFactory.js";
+
 import {
   CREW_ROLES,
   HUNTER_KILLER_STATES,
 } from "./runtime/runtimeConstants.js";
+
 import {
   DETECTION_STAGES,
   getHexDistance,
 } from "./detection.js";
+
+import {
+  getHexDirection,
+} from "./hexGeometry.js";
+
 import {
   isTurretAligned,
   setTurretTargetDirection,
@@ -102,20 +117,15 @@ function positiveOrDefault(
 
 function normalizeAngle(angle) {
   let normalized =
-    finiteOrDefault(
-      angle,
-      0,
-    ) %
+    finiteOrDefault(angle, 0) %
     (Math.PI * 2);
 
   if (normalized > Math.PI) {
-    normalized -=
-      Math.PI * 2;
+    normalized -= Math.PI * 2;
   }
 
   if (normalized < -Math.PI) {
-    normalized +=
-      Math.PI * 2;
+    normalized += Math.PI * 2;
   }
 
   return normalized;
@@ -187,9 +197,9 @@ function getDirectionBetween(
   observer,
   target,
 ) {
-  return Math.atan2(
-    target.row - observer.row,
-    target.column - observer.column,
+  return getHexDirection(
+    observer,
+    target,
   );
 }
 
@@ -256,8 +266,7 @@ function ensureObserverBasePerformance(
     nonNegativeOrDefault(
       observer
         .baseIdentificationFactor ??
-        observer
-          .identificationFactor,
+        observer.identificationFactor,
       1,
     );
 
@@ -318,8 +327,7 @@ function restoreObserverBasePerformance(
     observer.baseRange;
 
   observer.identificationFactor =
-    observer
-      .baseIdentificationFactor;
+    observer.baseIdentificationFactor;
 }
 
 function applyObserverPerformance(
@@ -349,17 +357,14 @@ function applyObserverPerformance(
     );
 
   observer.identificationFactor =
-    observer
-      .baseIdentificationFactor *
+    observer.baseIdentificationFactor *
     nonNegativeOrDefault(
       factors?.identification,
       1,
     );
 }
 
-function clearHunterKillerState(
-  unit,
-) {
+function clearHunterKillerState(unit) {
   const hunterKiller =
     getHunterKiller(unit);
 
@@ -380,9 +385,7 @@ function clearHunterKillerState(
     null;
 }
 
-function deactivateCommanderVisual(
-  unit,
-) {
+function deactivateCommanderVisual(unit) {
   const commander =
     getCrewObserver(
       unit,
@@ -395,9 +398,7 @@ function deactivateCommanderVisual(
   }
 }
 
-function deactivateCommanderSight(
-  unit,
-) {
+function deactivateCommanderSight(unit) {
   const sight =
     getCommanderSight(unit);
 
@@ -415,9 +416,7 @@ function deactivateCommanderSight(
       null;
   }
 
-  clearHunterKillerState(
-    unit,
-  );
+  clearHunterKillerState(unit);
 }
 
 function activateCommanderVisual(
@@ -454,9 +453,7 @@ function activateCommanderVisual(
   commander.lastUpdatedTurn =
     turn;
 
-  deactivateCommanderSight(
-    unit,
-  );
+  deactivateCommanderSight(unit);
 
   return true;
 }
@@ -474,32 +471,25 @@ function isLoaderBusy(unit) {
   );
 }
 
-function getLoaderObservationMode(
-  unit,
-) {
+function getLoaderObservationMode(unit) {
   if (isLoaderBusy(unit)) {
     return (
-      LOADER_OBSERVATION_MODES
-        .LOADING
+      LOADER_OBSERVATION_MODES.LOADING
     );
   }
 
   if (isLoaderHatchOpen(unit)) {
     return (
-      LOADER_OBSERVATION_MODES
-        .OPEN_HATCH
+      LOADER_OBSERVATION_MODES.OPEN_HATCH
     );
   }
 
   return (
-    LOADER_OBSERVATION_MODES
-      .PERISCOPE
+    LOADER_OBSERVATION_MODES.PERISCOPE
   );
 }
 
-function getLoaderPeriscopeDirection(
-  unit,
-) {
+function getLoaderPeriscopeDirection(unit) {
   const turretDirection =
     finiteOrDefault(
       unit.turretDirection ??
@@ -528,9 +518,7 @@ function updateLoaderObservation(
   }
 
   const mode =
-    getLoaderObservationMode(
-      unit,
-    );
+    getLoaderObservationMode(unit);
 
   loader.observationMode =
     mode;
@@ -544,8 +532,7 @@ function updateLoaderObservation(
 
   if (
     mode ===
-      LOADER_OBSERVATION_MODES
-        .OPEN_HATCH &&
+      LOADER_OBSERVATION_MODES.OPEN_HATCH &&
     Number.isFinite(
       loader.assignedDirection,
     )
@@ -835,9 +822,7 @@ export function setPersistentAction(
   return unit.action;
 }
 
-export function clearPersistentAction(
-  unit,
-) {
+export function clearPersistentAction(unit) {
   unit.action =
     createIdleAction();
 
@@ -885,9 +870,7 @@ export function setCrewObservationDirection(
     return true;
   }
 
-  if (
-    !Number.isFinite(direction)
-  ) {
+  if (!Number.isFinite(direction)) {
     return false;
   }
 
@@ -942,8 +925,7 @@ export function setCrewObservationDirection(
       true;
 
     observer.observationMode =
-      LOADER_OBSERVATION_MODES
-        .OPEN_HATCH;
+      LOADER_OBSERVATION_MODES.OPEN_HATCH;
 
     observer.lastUpdatedTurn =
       turn;
@@ -972,22 +954,14 @@ export function setCommanderSightDirection(
     return false;
   }
 
-  deactivateCommanderVisual(
-    unit,
-  );
-
-  clearHunterKillerState(
-    unit,
-  );
-
-  const nextTargetDirection =
-    normalizeAngle(direction);
+  deactivateCommanderVisual(unit);
+  clearHunterKillerState(unit);
 
   sight.active =
     true;
 
   sight.targetDirection =
-    nextTargetDirection;
+    normalizeAngle(direction);
 
   sight.targetUnitId =
     null;
@@ -1097,9 +1071,7 @@ export function designateHunterKillerTarget(
       ),
     );
 
-  deactivateCommanderVisual(
-    unit,
-  );
+  deactivateCommanderVisual(unit);
 
   sight.active =
     true;
@@ -1224,9 +1196,7 @@ function updateHunterKillerTargeting(
       ),
     );
 
-  deactivateCommanderVisual(
-    unit,
-  );
+  deactivateCommanderVisual(unit);
 
   if (sight) {
     const targetChanged =
@@ -1640,4 +1610,4 @@ export function processPersistentActions(
   return {
     adjustedShots,
   };
-}
+      }
