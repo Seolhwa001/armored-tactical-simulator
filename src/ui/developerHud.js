@@ -2,10 +2,10 @@
 // ATS PROJECT
 // File      : src/ui/developerHud.js
 // Sprint    : 3.9.1
-// Revision  : R4
+// Revision  : R5
 // Build     : 2026-08-05
 // Type      : FULL REPLACEMENT
-// Purpose   : Battle-only selected-unit developer inspection HUD
+// Purpose   : Battle-only developer HUD with detection decision replay
 // ============================================================
 
 import {
@@ -219,6 +219,53 @@ function getDetectionStageLabel(unit) {
       stage
     ] ??
     `UNKNOWN(${stage ?? "-"})`
+  );
+}
+
+function getDetectionStageValueLabel(
+  stage,
+) {
+  return (
+    DETECTION_STAGE_LABELS[
+      stage
+    ] ??
+    `UNKNOWN(${stage ?? "-"})`
+  );
+}
+
+function formatDecimal(
+  value,
+  digits = 2,
+) {
+  return Number.isFinite(value)
+    ? value.toFixed(digits)
+    : "-";
+}
+
+function getDetectionReplayReasonLabel(
+  reason,
+) {
+  const labels = {
+    "detected":
+      "탐지 성공",
+
+    "outside-effective-range":
+      "유효 탐지거리 밖",
+
+    "no-active-observation-candidate":
+      "활성 감시 후보 없음",
+
+    "no-friendly-observer":
+      "활성 아군 관측자 없음",
+
+    "recon-by-fire-contact":
+      "화력수색 임시 접촉",
+  };
+
+  return (
+    labels[reason] ??
+    reason ??
+    "기록 없음"
   );
 }
 
@@ -925,6 +972,192 @@ function renderDetectionSection(
   );
 }
 
+function renderDetectionReplaySection(
+  content,
+  runtimeScenario,
+  unit,
+) {
+  const section =
+    createSection(
+      "DETECTION REPLAY",
+    );
+
+  if (
+    unit?.side !== "enemy"
+  ) {
+    section.append(
+      createStatusRow(
+        "Replay",
+        "N/A",
+      ),
+    );
+
+    content.append(
+      section,
+    );
+
+    return;
+  }
+
+  const replay =
+    unit.detectionReplay;
+
+  if (!replay) {
+    section.append(
+      createStatusRow(
+        "Replay",
+        "기록 없음",
+      ),
+    );
+
+    content.append(
+      section,
+    );
+
+    return;
+  }
+
+  const observer =
+    getUnitById(
+      runtimeScenario,
+      replay.observerUnitId,
+    );
+
+  const observerLabel =
+    replay.observerRole
+      ? (
+          CREW_ROLE_LABELS[
+            replay.observerRole
+          ] ??
+          replay.observerRole
+        )
+      : "없음";
+
+  section.append(
+    createStatusRow(
+      "Turn",
+      formatNumber(
+        replay.turn,
+      ),
+    ),
+
+    createStatusRow(
+      "Observer Unit",
+      getUnitDisplayName(
+        observer,
+      ),
+    ),
+
+    createStatusRow(
+      "Observer Role",
+      observerLabel,
+    ),
+
+    createStatusRow(
+      "Candidate Count",
+      formatNumber(
+        replay.candidateCount,
+        "0",
+      ),
+    ),
+
+    createStatusRow(
+      "Distance",
+      formatDecimal(
+        replay.distance,
+      ),
+    ),
+
+    createStatusRow(
+      "Visual Range",
+      formatDecimal(
+        replay.effectiveVisualRange,
+      ),
+    ),
+
+    createStatusRow(
+      "Identification Range",
+      formatDecimal(
+        replay.effectiveIdentificationRange,
+      ),
+    ),
+
+    createStatusRow(
+      "Base Visual",
+      formatDecimal(
+        replay.baseVisualRange,
+      ),
+    ),
+
+    createStatusRow(
+      "Base Identification",
+      formatDecimal(
+        replay.baseIdentificationRange,
+      ),
+    ),
+
+    createStatusRow(
+      "Range Factor",
+      formatDecimal(
+        replay.observerRangeFactor,
+      ),
+    ),
+
+    createStatusRow(
+      "Identification Factor",
+      formatDecimal(
+        replay.identificationFactor,
+      ),
+    ),
+
+    createStatusRow(
+      "Concealment Penalty",
+      formatDecimal(
+        replay.concealmentPenalty,
+      ),
+    ),
+
+    createStatusRow(
+      "Exposure Active",
+      replay.exposureActive
+        ? "YES"
+        : "NO",
+    ),
+
+    createStatusRow(
+      "Exposure Applied",
+      replay.exposureApplied
+        ? "YES"
+        : "NO",
+    ),
+
+    createStatusRow(
+      "Exposure Minimum",
+      getDetectionStageValueLabel(
+        replay.exposureMinimumStage,
+      ),
+    ),
+
+    createStatusRow(
+      "Reason",
+      getDetectionReplayReasonLabel(
+        replay.reason,
+      ),
+    ),
+
+    createStatusRow(
+      "Final Stage",
+      getDetectionStageValueLabel(
+        replay.finalStage,
+      ),
+    ),
+  );
+
+  content.append(
+    section,
+  );
+}
+
 export function createDeveloperHud({
   parentElement,
   getDeveloperMode,
@@ -1039,6 +1272,12 @@ export function createDeveloperHud({
       runtimeScenario,
       selectedUnit,
       currentTurn,
+    );
+
+    renderDetectionReplaySection(
+      content,
+      runtimeScenario,
+      selectedUnit,
     );
   }
 
