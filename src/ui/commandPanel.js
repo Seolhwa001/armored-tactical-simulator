@@ -2,7 +2,7 @@
 // ATS PROJECT
 // File      : src/ui/commandPanel.js
 // Sprint    : 3.9.1
-// Revision  : R5
+// Revision  : R6
 // Build     : 2026-08-05
 // Type      : FULL REPLACEMENT
 // Purpose   : Command UI with Hunter Killer target and handoff status
