@@ -1,3 +1,13 @@
+// ============================================================
+// ATS PROJECT
+// File      : src/engine/combat.js
+// Sprint    : 3.9.x
+// Revision  : R1
+// Build     : 2026-08-05
+// Type      : PATCHED FULL REPLACEMENT
+// Purpose   : Smoke creation, lifetime, and shared occlusion contract
+// ============================================================
+
 const DIRECT_FIRE_AMMUNITION = new Set([
   "apfsds",
   "heat",
@@ -42,6 +52,190 @@ const SMOKE_SOURCES = Object.freeze({
   MAIN_GUN: "main-gun",
   VEHICLE: "vehicle",
 });
+const FULL_ROTATION = Math.PI * 2;
+const HEX_DIRECTION_STEP = Math.PI / 3;
+const SMOKE_VISUAL_FACTOR = 0.7;
+const SMOKE_IDENTIFICATION_FACTOR = 0.5;
+const INSIDE_SMOKE_VISUAL_FACTOR = 0.45;
+const INSIDE_SMOKE_IDENTIFICATION_FACTOR = 0.25;
+
+function smokeKey(column, row) {
+  return `${column},${row}`;
+}
+
+function normalizeDirection(value) {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+  let result = value % FULL_ROTATION;
+  if (result < 0) result += FULL_ROTATION;
+  return result;
+}
+
+function getDirectionIndex(direction) {
+  return Math.round(
+    normalizeDirection(direction) /
+      HEX_DIRECTION_STEP,
+  ) % 6;
+}
+
+function getNeighborHex(origin, directionIndex) {
+  const evenOffsets = [
+    [1, 0], [0, 1], [-1, 1],
+    [-1, 0], [-1, -1], [0, -1],
+  ];
+  const oddOffsets = [
+    [1, 0], [1, 1], [0, 1],
+    [-1, 0], [0, -1], [1, -1],
+  ];
+  const offsets = (origin.row & 1)
+    ? oddOffsets
+    : evenOffsets;
+  const [columnOffset, rowOffset] =
+    offsets[(directionIndex + 6) % 6];
+  return {
+    column: origin.column + columnOffset,
+    row: origin.row + rowOffset,
+  };
+}
+
+function offsetToCube(hex) {
+  const q = hex.column -
+    (hex.row - (hex.row & 1)) / 2;
+  const z = hex.row;
+  const x = q;
+  const y = -x - z;
+  return { x, y, z };
+}
+
+function cubeToOffset(cube) {
+  return {
+    column: cube.x +
+      (cube.z - (cube.z & 1)) / 2,
+    row: cube.z,
+  };
+}
+
+function cubeRound(cube) {
+  let x = Math.round(cube.x);
+  let y = Math.round(cube.y);
+  let z = Math.round(cube.z);
+  const xDifference = Math.abs(x - cube.x);
+  const yDifference = Math.abs(y - cube.y);
+  const zDifference = Math.abs(z - cube.z);
+  if (xDifference > yDifference && xDifference > zDifference) {
+    x = -y - z;
+  } else if (yDifference > zDifference) {
+    y = -x - z;
+  } else {
+    z = -x - y;
+  }
+  return { x, y, z };
+}
+
+function getHexLine(start, end) {
+  const first = offsetToCube(start);
+  const second = offsetToCube(end);
+  const distance = Math.max(
+    Math.abs(first.x - second.x),
+    Math.abs(first.y - second.y),
+    Math.abs(first.z - second.z),
+  );
+  if (distance === 0) return [{...start}];
+  const line = [];
+  for (let index = 0; index <= distance; index += 1) {
+    const ratio = index / distance;
+    line.push(cubeToOffset(cubeRound({
+      x: first.x + (second.x - first.x) * ratio,
+      y: first.y + (second.y - first.y) * ratio,
+      z: first.z + (second.z - first.z) * ratio,
+    })));
+  }
+  return line;
+}
+
+export function prepareActiveSmokeAreas(
+  smokeAreas,
+  turn,
+) {
+  const activeSmokeAreas = Array.isArray(smokeAreas)
+    ? smokeAreas.filter((area) =>
+        Number.isFinite(area?.column) &&
+        Number.isFinite(area?.row) &&
+        (!Number.isFinite(turn) ||
+          !Number.isFinite(area.expiresTurn) ||
+          area.expiresTurn >= turn),
+      )
+    : [];
+  return {
+    activeSmokeAreas,
+    smokeHexKeys: new Set(
+      activeSmokeAreas.map((area) =>
+        smokeKey(area.column, area.row),
+      ),
+    ),
+  };
+}
+
+export function getSmokeOcclusion({
+  smokeAreas,
+  activeSmokeAreas,
+  smokeHexKeys,
+  observer,
+  target,
+  turn,
+}) {
+  if (!observer || !target) {
+    return {
+      intersectsSmoke: false,
+      observerInsideSmoke: false,
+      targetInsideSmoke: false,
+      smokeHexCount: 0,
+      visualRangeFactor: 1,
+      identificationRangeFactor: 1,
+    };
+  }
+  const prepared = smokeHexKeys instanceof Set
+    ? {
+        activeSmokeAreas: Array.isArray(activeSmokeAreas)
+          ? activeSmokeAreas
+          : [],
+        smokeHexKeys,
+      }
+    : prepareActiveSmokeAreas(
+        activeSmokeAreas ?? smokeAreas,
+        turn,
+      );
+  const observerKey = smokeKey(observer.column, observer.row);
+  const targetKey = smokeKey(target.column, target.row);
+  const observerInsideSmoke = prepared.smokeHexKeys.has(observerKey);
+  const targetInsideSmoke = prepared.smokeHexKeys.has(targetKey);
+  const line = getHexLine(observer, target);
+  const intersectingKeys = new Set();
+  line.forEach((hex) => {
+    const key = smokeKey(hex.column, hex.row);
+    if (prepared.smokeHexKeys.has(key)) intersectingKeys.add(key);
+  });
+  const smokeHexCount = intersectingKeys.size;
+  let visualRangeFactor =
+    Math.pow(SMOKE_VISUAL_FACTOR, smokeHexCount);
+  let identificationRangeFactor =
+    Math.pow(SMOKE_IDENTIFICATION_FACTOR, smokeHexCount);
+  if (observerInsideSmoke || targetInsideSmoke) {
+    visualRangeFactor *= INSIDE_SMOKE_VISUAL_FACTOR;
+    identificationRangeFactor *=
+      INSIDE_SMOKE_IDENTIFICATION_FACTOR;
+  }
+  return {
+    intersectsSmoke: smokeHexCount > 0,
+    observerInsideSmoke,
+    targetInsideSmoke,
+    smokeHexCount,
+    visualRangeFactor: Math.max(0.15, visualRangeFactor),
+    identificationRangeFactor: Math.max(0.08, identificationRangeFactor),
+  };
+}
+
 
 function clamp(
   value,
@@ -123,7 +317,9 @@ function createOrRefreshSmokeArea({
         area.column ===
           targetHex.column &&
         area.row ===
-          targetHex.row,
+          targetHex.row &&
+        area.sourceType ===
+          sourceType,
     );
 
   if (existing) {
@@ -562,28 +758,30 @@ export function deployVehicleSmoke(
     };
   }
 
-  const smokeArea =
-    createOrRefreshSmokeArea({
-      runtimeScenario,
+  const centerDirection =
+    getDirectionIndex(
+      unit.hullDirection,
+    );
 
-      sourceUnit:
-        unit,
+  const targetHexes = [
+    getNeighborHex(unit, centerDirection - 1),
+    getNeighborHex(unit, centerDirection),
+    getNeighborHex(unit, centerDirection + 1),
+  ];
 
-      targetHex: {
-        column:
-          unit.column,
+  const smokeAreas = targetHexes
+    .map((targetHex) =>
+      createOrRefreshSmokeArea({
+        runtimeScenario,
+        sourceUnit: unit,
+        targetHex,
+        turn,
+        sourceType: SMOKE_SOURCES.VEHICLE,
+      }),
+    )
+    .filter(Boolean);
 
-        row:
-          unit.row,
-      },
-
-      turn,
-
-      sourceType:
-        SMOKE_SOURCES.VEHICLE,
-    });
-
-  if (!smokeArea) {
+  if (smokeAreas.length !== targetHexes.length) {
     return {
       success: false,
       reason:
@@ -610,21 +808,22 @@ export function deployVehicleSmoke(
     smokeCreated: true,
 
     smokeAreaId:
-      smokeArea.id,
+      smokeAreas[0]?.id ?? null,
+
+    smokeAreaIds:
+      smokeAreas.map((area) => area.id),
 
     sourceType:
       SMOKE_SOURCES.VEHICLE,
 
-    targetHex: {
-      column:
-        smokeArea.column,
-
-      row:
-        smokeArea.row,
-    },
+    targetHexes:
+      smokeAreas.map((area) => ({
+        column: area.column,
+        row: area.row,
+      })),
 
     expiresTurn:
-      smokeArea.expiresTurn,
+      smokeAreas[0]?.expiresTurn ?? turn,
 
     remainingUses:
       vehicleSmoke.remainingUses,
@@ -633,7 +832,7 @@ export function deployVehicleSmoke(
       vehicleSmoke.maximumUses,
 
     reason:
-      `자차 위치에 자체연막을 전개했습니다. ` +
+      `차체 전방에 자체연막을 전개했습니다. ` +
       `남은 횟수 ${vehicleSmoke.remainingUses}` +
       `/${vehicleSmoke.maximumUses}`,
   };

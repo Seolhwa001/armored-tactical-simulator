@@ -2,10 +2,10 @@
 // ATS PROJECT
 // File      : src/engine/detection.js
 // Sprint    : 3.9.1
-// Revision  : R9
+// Revision  : R10
 // Build     : 2026-08-05
 // Type      : PATCHED FULL REPLACEMENT
-// Purpose   : Directional detection with complete candidate diagnostics
+// Purpose   : Directional detection with shared smoke-occlusion diagnostics
 // ============================================================
 
 import {
@@ -16,6 +16,11 @@ import {
 import {
   normalizeAngle,
 } from "./mathUtils.js";
+
+import {
+  getSmokeOcclusion,
+  prepareActiveSmokeAreas,
+} from "./combat.js";
 
 export {
   getHexDistance,
@@ -650,6 +655,7 @@ function evaluateDetectionCandidate(
   distance,
   turn,
   observation,
+  smokeContext,
 ) {
   const visualRange =
     getSensorVisualRange(
@@ -681,22 +687,36 @@ function evaluateDetectionCandidate(
       turn,
     ) / 25;
 
-  const effectiveVisualRange =
+  const baseEffectiveVisualRange =
     Math.max(
       0,
-      visualRange *
-        observerRange -
+      visualRange * observerRange -
         concealmentPenalty,
     );
 
-  const effectiveIdentificationRange =
+  const baseEffectiveIdentificationRange =
     Math.max(
       0,
-      identificationRange *
-        observerRange *
+      identificationRange * observerRange *
         identificationFactor -
         concealmentPenalty,
     );
+
+  const smokeOcclusion =
+    getSmokeOcclusion({
+      ...smokeContext,
+      observer,
+      target: enemy,
+      turn,
+    });
+
+  const effectiveVisualRange =
+    baseEffectiveVisualRange *
+      smokeOcclusion.visualRangeFactor;
+
+  const effectiveIdentificationRange =
+    baseEffectiveIdentificationRange *
+      smokeOcclusion.identificationRangeFactor;
 
   let stage =
     DETECTION_STAGES.HIDDEN;
@@ -740,6 +760,9 @@ function evaluateDetectionCandidate(
     identificationFactor,
 
     concealmentPenalty,
+    baseEffectiveVisualRange,
+    baseEffectiveIdentificationRange,
+    smokeOcclusion,
   };
 }
 
@@ -750,6 +773,7 @@ function enrichCandidateDiagnostics(
   turn,
   diagnostics,
   results,
+  smokeContext,
 ) {
   const visualRange =
     getSensorVisualRange(observer);
@@ -765,6 +789,14 @@ function enrichCandidateDiagnostics(
       enemy,
       turn,
     ) / 25;
+
+  const smokeOcclusion =
+    getSmokeOcclusion({
+      ...smokeContext,
+      observer,
+      target: enemy,
+      turn,
+    });
 
   return diagnostics.map(
     (diagnostic) => {
@@ -788,26 +820,32 @@ function enrichCandidateDiagnostics(
           DEFAULT_IDENTIFICATION_FACTOR,
         );
 
-      const effectiveVisualRange =
-        matchingResult
-          ?.effectiveVisualRange ??
+      const baseEffectiveVisualRange =
+        matchingResult?.baseEffectiveVisualRange ??
         Math.max(
           0,
-          visualRange *
-            observerRange -
+          visualRange * observerRange -
             concealmentPenalty,
         );
 
-      const effectiveIdentificationRange =
-        matchingResult
-          ?.effectiveIdentificationRange ??
+      const baseEffectiveIdentificationRange =
+        matchingResult?.baseEffectiveIdentificationRange ??
         Math.max(
           0,
-          identificationRange *
-            observerRange *
+          identificationRange * observerRange *
             identificationFactor -
             concealmentPenalty,
         );
+
+      const effectiveVisualRange =
+        matchingResult?.effectiveVisualRange ??
+        baseEffectiveVisualRange *
+          smokeOcclusion.visualRangeFactor;
+
+      const effectiveIdentificationRange =
+        matchingResult?.effectiveIdentificationRange ??
+        baseEffectiveIdentificationRange *
+          smokeOcclusion.identificationRangeFactor;
 
       const candidateStage =
         matchingResult?.stage ??
@@ -832,6 +870,20 @@ function enrichCandidateDiagnostics(
         identificationRange,
         effectiveIdentificationRange,
         concealmentPenalty,
+        baseEffectiveVisualRange,
+        baseEffectiveIdentificationRange,
+        observerInsideSmoke:
+          smokeOcclusion.observerInsideSmoke,
+        targetInsideSmoke:
+          smokeOcclusion.targetInsideSmoke,
+        pathIntersectsSmoke:
+          smokeOcclusion.intersectsSmoke,
+        smokeHexCount:
+          smokeOcclusion.smokeHexCount,
+        smokeVisualFactor:
+          smokeOcclusion.visualRangeFactor,
+        smokeIdentificationFactor:
+          smokeOcclusion.identificationRangeFactor,
         candidateStage,
         accepted:
           rejectionReason === null,
@@ -846,6 +898,7 @@ function calculateDetectionStage(
   enemy,
   distance,
   turn,
+  smokeContext,
 ) {
   const candidates =
     getObservationCandidates(
@@ -885,6 +938,7 @@ function calculateDetectionStage(
           turn,
           candidates.diagnostics ?? [],
           [],
+          smokeContext,
         ),
     };
   }
@@ -898,6 +952,7 @@ function calculateDetectionStage(
           distance,
           turn,
           candidate,
+          smokeContext,
         ),
     );
 
@@ -909,6 +964,7 @@ function calculateDetectionStage(
       turn,
       candidates.diagnostics ?? [],
       results,
+      smokeContext,
     );
 
   const best =
@@ -988,6 +1044,15 @@ function calculateDetectionStage(
 
     concealmentPenalty:
       best.concealmentPenalty,
+
+    baseEffectiveVisualRange:
+      best.baseEffectiveVisualRange,
+
+    baseEffectiveIdentificationRange:
+      best.baseEffectiveIdentificationRange,
+
+    smokeOcclusion:
+      best.smokeOcclusion,
 
     candidateDiagnostics,
   };
@@ -1202,6 +1267,12 @@ export function updateDetection(
         !unit.destroyed,
     );
 
+  const smokeContext =
+    prepareActiveSmokeAreas(
+      runtimeScenario?.smokeAreas ?? [],
+      turn,
+    );
+
   const enemies =
     units.filter(
       (unit) =>
@@ -1259,6 +1330,7 @@ export function updateDetection(
               enemy,
               distance,
               turn,
+              smokeContext,
             );
 
           if (
