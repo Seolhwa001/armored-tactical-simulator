@@ -2,10 +2,10 @@
 // ATS PROJECT
 // File      : src/ui/developerHud.js
 // Sprint    : 3.9.1
-// Revision  : R5
+// Revision  : R7
 // Build     : 2026-08-05
-// Type      : FULL REPLACEMENT
-// Purpose   : Battle-only developer HUD with detection decision replay
+// Type      : PATCHED FULL REPLACEMENT
+// Purpose   : Battle-only developer HUD with complete candidate diagnostics
 // ============================================================
 
 import {
@@ -76,6 +76,23 @@ const CREW_ROLE_LABELS =
 
 const FULL_ROTATION =
   Math.PI * 2;
+
+function getAbsoluteAngleDifference(first, second) {
+  if (!Number.isFinite(first) || !Number.isFinite(second)) {
+    return null;
+  }
+  let difference = (first - second) % FULL_ROTATION;
+  if (difference > Math.PI) difference -= FULL_ROTATION;
+  if (difference < -Math.PI) difference += FULL_ROTATION;
+  return Math.abs(difference);
+}
+
+function formatAngleDifference(first, second) {
+  const difference = getAbsoluteAngleDifference(first, second);
+  return Number.isFinite(difference)
+    ? `${(difference * 180 / Math.PI).toFixed(1)}°`
+    : "-";
+}
 
 function clamp(
   value,
@@ -688,6 +705,24 @@ function renderDirectionSection(
         sight?.targetDirection,
       ),
     ),
+
+    createStatusRow(
+      "CPS Angle Difference",
+      formatAngleDifference(
+        sight?.direction,
+        sight?.targetDirection,
+      ),
+    ),
+
+    createStatusRow(
+      "CPS Locked",
+      sight?.locked === true ? "YES" : "NO",
+    ),
+
+    createStatusRow(
+      "CPS Tracking",
+      sight?.tracking === true ? "YES" : "NO",
+    ),
   );
 
   content.append(
@@ -841,6 +876,28 @@ function renderObservationSection(
       ),
     ),
   );
+
+  const directedAction =
+    unit?.action?.type === "recon-by-fire"
+      ? unit.action
+      : null;
+
+  if (directedAction) {
+    section.append(
+      createStatusRow(
+        "Directed Action State",
+        directedAction.internalState ?? "-",
+      ),
+      createStatusRow(
+        "Execution Method",
+        directedAction.executionMethod ?? "-",
+      ),
+      createStatusRow(
+        "Execution Count",
+        `${directedAction.executionCount ?? 0}/${directedAction.executionLimit ?? 1}`,
+      ),
+    );
+  }
 
   content.append(
     section,
@@ -1151,6 +1208,126 @@ function renderDetectionReplaySection(
         replay.finalStage,
       ),
     ),
+  );
+
+  const candidateDiagnostics =
+    Array.isArray(
+      replay.candidateDiagnostics,
+    )
+      ? replay.candidateDiagnostics
+      : [];
+
+  candidateDiagnostics.forEach(
+    (candidate, index) => {
+      const roleLabel =
+        CREW_ROLE_LABELS[
+          candidate.role
+        ] ??
+        candidate.role ??
+        `CANDIDATE ${index + 1}`;
+
+      const angleLabel =
+        Number.isFinite(
+          candidate.angleDifference,
+        )
+          ? `${(
+              candidate.angleDifference *
+              180 / Math.PI
+            ).toFixed(1)}°`
+          : "-";
+
+      const fieldOfViewLabel =
+        Number.isFinite(
+          candidate.fieldOfView,
+        )
+          ? `${(
+              candidate.fieldOfView *
+              180 / Math.PI
+            ).toFixed(1)}°`
+          : "-";
+
+      const status =
+        candidate.accepted
+          ? "ACCEPTED"
+          : candidate.rejectionReason ??
+            "REJECTED";
+
+      const prefix =
+        `Candidate ${index + 1}`;
+
+      section.append(
+        createStatusRow(
+          prefix,
+          `${roleLabel} / ${status}`,
+        ),
+        createStatusRow(
+          `${prefix} Enabled`,
+          formatBoolean(
+            candidate.enabled,
+          ),
+        ),
+        createStatusRow(
+          `${prefix} Observing`,
+          formatBoolean(
+            candidate.observing,
+          ),
+        ),
+        createStatusRow(
+          `${prefix} Angle`,
+          angleLabel,
+        ),
+        createStatusRow(
+          `${prefix} FOV`,
+          fieldOfViewLabel,
+        ),
+        createStatusRow(
+          `${prefix} Distance`,
+          formatNumber(
+            candidate.distance,
+          ),
+        ),
+        createStatusRow(
+          `${prefix} Visual`,
+          formatNumber(
+            candidate.visualRange,
+          ),
+        ),
+        createStatusRow(
+          `${prefix} Effective Visual`,
+          formatNumber(
+            candidate
+              .effectiveVisualRange,
+          ),
+        ),
+        createStatusRow(
+          `${prefix} Identification`,
+          formatNumber(
+            candidate
+              .identificationRange,
+          ),
+        ),
+        createStatusRow(
+          `${prefix} Effective ID`,
+          formatNumber(
+            candidate
+              .effectiveIdentificationRange,
+          ),
+        ),
+        createStatusRow(
+          `${prefix} Concealment Penalty`,
+          formatNumber(
+            candidate
+              .concealmentPenalty,
+          ),
+        ),
+        createStatusRow(
+          `${prefix} Stage`,
+          getDetectionStageValueLabel(
+            candidate.candidateStage,
+          ),
+        ),
+      );
+    },
   );
 
   content.append(
