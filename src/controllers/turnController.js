@@ -2,7 +2,7 @@
 // ATS PROJECT
 // File      : src/controllers/turnController.js
 // Sprint    : 3.9.x
-// Revision  : R4
+// Revision  : R5
 // Build     : 2026-08-05
 // Type      : PATCHED FULL REPLACEMENT
 // Purpose   : Turn execution with hull-turn movement classification
@@ -376,6 +376,8 @@ export function createTurnController({
         state.fog,
         state.terrain,
         getUnits(),
+        state.runtimeScenario?.smokeAreas ?? [],
+        state.turn,
       );
 
     if (fogChanged) {

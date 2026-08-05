@@ -2,7 +2,7 @@
 // ATS PROJECT
 // File      : src/controllers/mapInputController.js
 // Sprint    : 3.9.1
-// Revision  : R10
+// Revision  : R11
 // Build     : 2026-08-05
 // Type      : FULL REPLACEMENT
 // Purpose   : Map input with isolated developer inspection and detection-first fog refresh
@@ -258,6 +258,8 @@ export function createMapInputController({
         state.fog,
         state.terrain,
         getUnits(),
+        state.runtimeScenario?.smokeAreas ?? [],
+        state.turn,
       );
 
     if (changed) {
