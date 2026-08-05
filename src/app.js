@@ -2,7 +2,7 @@
 // ATS PROJECT
 // File      : src/app.js
 // Sprint    : 3.9.1
-// Revision  : R2
+// Revision  : R3
 // Build     : 2026-08-05
 // Type      : PATCHED FULL REPLACEMENT
 // Purpose   : Fire-panel recon targeting and Developer HUD integration
@@ -580,6 +580,8 @@ function refreshFogAndRender() {
     state.fog,
     state.terrain,
     getUnits(),
+    state.runtimeScenario?.smokeAreas ?? [],
+    state.turn,
   );
 
   if (changed) {
