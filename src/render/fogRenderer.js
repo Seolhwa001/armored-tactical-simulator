@@ -1,72 +1,28 @@
-// src/render/fogRenderer.js — 새 파일
+// ============================================================
+// ATS PROJECT
+// File      : src/render/fogRenderer.js
+// Sprint    : 3.9.x
+// Revision  : R1
+// Build     : 2026-08-05
+// Type      : PATCHED FULL REPLACEMENT
+// Purpose   : Fog visibility with shared smoke occlusion
+// ============================================================
 
-function terrainKey(
-  column,
-  row,
-) {
+import {
+  getSmokeOcclusion,
+  prepareActiveSmokeAreas,
+} from "../engine/combat.js";
+
+import {
+  getHexDistance,
+} from "../engine/hexGeometry.js";
+
+function terrainKey(column, row) {
   return `${column},${row}`;
 }
 
-function offsetToAxial(
-  column,
-  row,
-) {
-  return {
-    q:
-      column -
-      (
-        row -
-        (row & 1)
-      ) /
-        2,
-
-    r: row,
-  };
-}
-
-function getHexDistance(
-  first,
-  second,
-) {
-  const firstAxial =
-    offsetToAxial(
-      first.column,
-      first.row,
-    );
-
-  const secondAxial =
-    offsetToAxial(
-      second.column,
-      second.row,
-    );
-
-  const deltaQ =
-    firstAxial.q -
-    secondAxial.q;
-
-  const deltaR =
-    firstAxial.r -
-    secondAxial.r;
-
-  return (
-    Math.abs(deltaQ) +
-    Math.abs(deltaR) +
-    Math.abs(
-      deltaQ + deltaR,
-    )
-  ) / 2;
-}
-
-function getObservationRange(
-  unit,
-) {
-  if (
-    unit.action?.type ===
-    "recon"
-  ) {
-    return 10;
-  }
-
+function getObservationRange(unit) {
+  if (unit.action?.type === "recon") return 10;
   return 7;
 }
 
@@ -78,9 +34,7 @@ export function createFogState() {
   };
 }
 
-export function resetFog(
-  fog,
-) {
+export function resetFog(fog) {
   fog.current.clear();
   fog.explored.clear();
   fog.version += 1;
@@ -90,130 +44,81 @@ export function updateFog(
   fog,
   terrain,
   units,
+  smokeAreas = [],
+  turn = null,
 ) {
-  const previousCurrent =
-    fog.current;
-
-  const nextCurrent =
-    new Set();
+  const previousCurrent = fog.current;
+  const nextCurrent = new Set();
+  const smokeContext = prepareActiveSmokeAreas(
+    smokeAreas,
+    turn,
+  );
+  const visibilityCache = new Map();
 
   units
-    .filter(
-      (unit) =>
-        unit.side ===
-          "friendly" &&
-        !unit.destroyed,
+    .filter((unit) =>
+      unit.side === "friendly" &&
+      !unit.destroyed,
     )
     .forEach((unit) => {
-      const range =
-        getObservationRange(
-          unit,
-        );
-
+      const range = getObservationRange(unit);
       terrain.forEach((hex) => {
-        if (
-          getHexDistance(
-            unit,
-            hex,
-          ) > range
-        ) {
-          return;
+        const distance = getHexDistance(unit, hex);
+        if (distance > range) return;
+        const cacheKey =
+          `${unit.id ?? `${unit.column},${unit.row}`}>` +
+          terrainKey(hex.column, hex.row);
+        let occlusion = visibilityCache.get(cacheKey);
+        if (!occlusion) {
+          occlusion = getSmokeOcclusion({
+            ...smokeContext,
+            observer: unit,
+            target: hex,
+            turn,
+          });
+          visibilityCache.set(cacheKey, occlusion);
         }
-
-        const key =
-          terrainKey(
-            hex.column,
-            hex.row,
-          );
-
+        const effectiveRange =
+          range * occlusion.visualRangeFactor;
+        if (distance > effectiveRange) return;
+        const key = terrainKey(hex.column, hex.row);
         nextCurrent.add(key);
         fog.explored.add(key);
       });
     });
 
-  let changed =
-    previousCurrent.size !==
-    nextCurrent.size;
-
+  let changed = previousCurrent.size !== nextCurrent.size;
   if (!changed) {
-    for (
-      const key of nextCurrent
-    ) {
-      if (
-        !previousCurrent.has(
-          key,
-        )
-      ) {
+    for (const key of nextCurrent) {
+      if (!previousCurrent.has(key)) {
         changed = true;
         break;
       }
     }
   }
-
-  fog.current =
-    nextCurrent;
-
-  if (changed) {
-    fog.version += 1;
-  }
-
+  fog.current = nextCurrent;
+  if (changed) fog.version += 1;
   return changed;
 }
 
 export function drawFogLayer({
-  context,
-  terrain,
-  fog,
-  bounds,
-  hexRadius,
-  hexToWorld,
-  drawHexagon,
-  isPointVisible,
+  context, terrain, fog, bounds, hexRadius,
+  hexToWorld, drawHexagon, isPointVisible,
 }) {
   terrain.forEach((hex) => {
-    const key =
-      terrainKey(
-        hex.column,
-        hex.row,
-      );
-
-    if (
-      fog.current.has(key)
-    ) {
-      return;
-    }
-
-    const point =
-      hexToWorld(
-        hex.column,
-        hex.row,
-      );
-
-    if (
-      !isPointVisible(
-        point,
-        bounds,
-      )
-    ) {
-      return;
-    }
-
-    const explored =
-      fog.explored.has(key);
-
+    const key = terrainKey(hex.column, hex.row);
+    if (fog.current.has(key)) return;
+    const point = hexToWorld(hex.column, hex.row);
+    if (!isPointVisible(point, bounds)) return;
+    const explored = fog.explored.has(key);
     drawHexagon(
-      point.x,
-      point.y,
-      hexRadius - 0.5,
-
+      point.x, point.y, hexRadius - 0.5,
       explored
         ? "rgba(4, 8, 7, 0.48)"
         : "rgba(2, 4, 4, 0.84)",
-
       explored
         ? "rgba(28, 39, 34, 0.45)"
         : "rgba(5, 8, 7, 0.9)",
-
       1,
     );
   });

@@ -1,4 +1,12 @@
-// src/render/smokeRenderer.js — 신규 파일, 예상 1~62행
+// ============================================================
+// ATS PROJECT
+// File      : src/render/smokeRenderer.js
+// Sprint    : 3.9.x
+// Revision  : R1
+// Build     : 2026-08-05
+// Type      : PATCHED FULL REPLACEMENT
+// Purpose   : Render independent vehicle and main-gun smoke areas
+// ============================================================
 
 export function drawSmokeAreas({
   context,
@@ -29,11 +37,16 @@ export function drawSmokeAreas({
 
     context.save();
 
-    context.fillStyle =
-      "rgba(170, 181, 175, 0.42)";
+    const vehicleSmoke =
+      area.sourceType === "vehicle";
 
-    context.strokeStyle =
-      "rgba(218, 225, 220, 0.5)";
+    context.fillStyle = vehicleSmoke
+      ? "rgba(154, 170, 161, 0.46)"
+      : "rgba(170, 181, 175, 0.42)";
+
+    context.strokeStyle = vehicleSmoke
+      ? "rgba(208, 222, 214, 0.58)"
+      : "rgba(218, 225, 220, 0.5)";
 
     context.lineWidth = 2;
 
