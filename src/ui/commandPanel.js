@@ -1,4 +1,12 @@
-// src/ui/commandPanel.js — 전체 교체
+// ============================================================
+// ATS PROJECT
+// File      : src/ui/commandPanel.js
+// Sprint    : 3.9.1
+// Revision  : R5
+// Build     : 2026-08-05
+// Type      : FULL REPLACEMENT
+// Purpose   : Command UI with Hunter Killer target and handoff status
+// ============================================================
 
 import { UNIT_ACTIONS } from "../engine/constants/actionConstants.js";
 
@@ -75,10 +83,7 @@ const LOADER_MODE_LABELS = Object.freeze({
   loading: "장전 중 제한 감시",
 });
 
-function createButton(
-  label,
-  options = {},
-) {
+function createButton(label, options = {}) {
   const button =
     document.createElement("button");
 
@@ -126,10 +131,7 @@ function createSection(title) {
   return section;
 }
 
-function createStatusRow(
-  label,
-  value,
-) {
+function createStatusRow(label, value) {
   const row =
     document.createElement("span");
 
@@ -169,10 +171,7 @@ function createCommandButton(
   );
 }
 
-function getObserver(
-  unit,
-  crewRole,
-) {
+function getObserver(unit, crewRole) {
   return (
     unit.crewObservation
       ?.observers?.[crewRole] ??
@@ -230,9 +229,7 @@ function getObserverStateLabel(
   return "육안 감시";
 }
 
-function getCommanderSightLabel(
-  unit,
-) {
+function getCommanderSightLabel(unit) {
   const sight =
     unit.crewObservation
       ?.commanderIndependentSight;
@@ -256,9 +253,86 @@ function getCommanderSightLabel(
     : "독립 감시 회전 중";
 }
 
-function createTurretStatusPanel(
-  unit,
+function getRuntimeUnitById(
+  runtimeScenario,
+  unitId,
 ) {
+  if (
+    !unitId ||
+    !Array.isArray(
+      runtimeScenario?.units,
+    )
+  ) {
+    return null;
+  }
+
+  return (
+    runtimeScenario.units.find(
+      (unit) =>
+        unit.id === unitId,
+    ) ?? null
+  );
+}
+
+function getUnitDisplayName(unit) {
+  if (!unit) {
+    return "없음";
+  }
+
+  return (
+    unit.name ??
+    unit.id ??
+    "없음"
+  );
+}
+
+function getHunterKillerTargetId(
+  hunterKiller,
+) {
+  return (
+    hunterKiller
+      ?.handedOffTargetUnitId ??
+    hunterKiller
+      ?.designatedTargetUnitId ??
+    hunterKiller
+      ?.detectedTargetUnitId ??
+    null
+  );
+}
+
+function getHunterKillerHandoffLabel(
+  hunterKiller,
+) {
+  if (!hunterKiller?.enabled) {
+    return "사용 불가";
+  }
+
+  if (
+    hunterKiller.state ===
+      HUNTER_KILLER_STATES.DESIGNATING
+  ) {
+    return "CPS·포탑 정렬 중";
+  }
+
+  if (
+    hunterKiller.state ===
+      HUNTER_KILLER_STATES.HANDOFF
+  ) {
+    return "포수 인계 중";
+  }
+
+  if (
+    hunterKiller.state ===
+      HUNTER_KILLER_STATES.TRACKING &&
+    hunterKiller.handedOffTargetUnitId
+  ) {
+    return "포수 인계 완료";
+  }
+
+  return "미인계";
+}
+
+function createTurretStatusPanel(unit) {
   const panel =
     document.createElement("div");
 
@@ -301,17 +375,14 @@ function createTurretStatusPanel(
         status.mode
       ] ?? status.mode,
     ),
-
     createStatusRow(
       "안정화",
       stabilizerText,
     ),
-
     createStatusRow(
       "포탑 상태",
       couplingText,
     ),
-
     createStatusRow(
       "주포 정위치",
       stowText,
@@ -336,6 +407,7 @@ function createTurretStatusPanel(
 
 function createObservationStatusPanel(
   unit,
+  runtimeScenario,
 ) {
   const panel =
     document.createElement("div");
@@ -356,6 +428,17 @@ function createObservationStatusPanel(
   const hunterKiller =
     observation.hunterKiller;
 
+  const targetId =
+    getHunterKillerTargetId(
+      hunterKiller,
+    );
+
+  const targetUnit =
+    getRuntimeUnitById(
+      runtimeScenario,
+      targetId,
+    );
+
   panel.append(
     createStatusRow(
       "전차장",
@@ -364,7 +447,6 @@ function createObservationStatusPanel(
         CREW_ROLES.COMMANDER,
       ),
     ),
-
     createStatusRow(
       "포수",
       getObserverStateLabel(
@@ -372,7 +454,6 @@ function createObservationStatusPanel(
         CREW_ROLES.GUNNER,
       ),
     ),
-
     createStatusRow(
       "조종수",
       getObserverStateLabel(
@@ -380,7 +461,6 @@ function createObservationStatusPanel(
         CREW_ROLES.DRIVER,
       ),
     ),
-
     createStatusRow(
       "탄약수",
       getObserverStateLabel(
@@ -388,28 +468,36 @@ function createObservationStatusPanel(
         CREW_ROLES.LOADER,
       ),
     ),
-
     createStatusRow(
       "CPS",
       getCommanderSightLabel(
         unit,
       ),
     ),
-
     createStatusRow(
       "헌터킬러",
       HUNTER_KILLER_LABELS[
         hunterKiller?.state
       ] ?? "사용 불가",
     ),
+    createStatusRow(
+      "HK 지정 표적",
+      getUnitDisplayName(
+        targetUnit,
+      ),
+    ),
+    createStatusRow(
+      "포수 인계",
+      getHunterKillerHandoffLabel(
+        hunterKiller,
+      ),
+    ),
   );
 
   return panel;
 }
 
-function getVehicleSmokeStatus(
-  unit,
-) {
+function getVehicleSmokeStatus(unit) {
   const vehicleSmoke =
     unit.vehicleSmoke;
 
@@ -461,8 +549,6 @@ export function createCommandPanel({
   onCancelMovement,
   onDeployVehicleSmoke,
 }) {
-  void getRuntimeScenario;
-
   function clear() {
     container.replaceChildren();
   }
@@ -491,9 +577,7 @@ export function createCommandPanel({
     paragraph.textContent =
       message;
 
-    container.append(
-      paragraph,
-    );
+    container.append(paragraph);
   }
 
   function appendCommandList(
@@ -761,6 +845,8 @@ export function createCommandPanel({
     section.append(
       createObservationStatusPanel(
         unit,
+        getRuntimeScenario?.() ??
+          null,
       ),
     );
 
@@ -797,7 +883,6 @@ export function createCommandPanel({
             !commanderAssignable,
         },
       ),
-
       createCommandButton(
         createCommanderSightCommand(),
         onCommandSelected,
@@ -806,17 +891,14 @@ export function createCommandPanel({
             !commanderSightOperational,
         },
       ),
-
       createAutomaticObservationStatus(
         "포수",
         "포탑 방향 자동 종속",
       ),
-
       createAutomaticObservationStatus(
         "조종수",
         "차체 전방 자동 종속",
       ),
-
       createCommandButton(
         createCrewObservationCommand(
           CREW_ROLES.LOADER,
@@ -839,7 +921,6 @@ export function createCommandPanel({
             !commanderSightOperational,
         },
       ),
-
       createCommandButton(
         {
           id: "recon",
@@ -848,7 +929,6 @@ export function createCommandPanel({
         },
         onCommandSelected,
       ),
-
       createCommandButton(
         {
           id: "recon-by-fire",
@@ -882,9 +962,7 @@ export function createCommandPanel({
                 "탄약수 감시구역을 현재 지정할 수 없습니다."
               );
 
-      section.append(
-        loaderNotice,
-      );
+      section.append(loaderNotice);
     }
 
     if (!commanderSightOperational) {
@@ -897,9 +975,7 @@ export function createCommandPanel({
       sightNotice.textContent =
         "CPS가 고장 또는 사용 불가 상태이므로 독립 감시와 헌터킬러를 사용할 수 없습니다.";
 
-      section.append(
-        sightNotice,
-      );
+      section.append(sightNotice);
     } else if (
       !hunterKillerEnabled
     ) {
@@ -1024,9 +1100,7 @@ export function createCommandPanel({
       },
     );
 
-    section.append(
-      modeGroup,
-    );
+    section.append(modeGroup);
 
     return section;
   }
@@ -1111,9 +1185,7 @@ export function createCommandPanel({
       unavailable.textContent =
         "이 차량에는 자체연막 기능이 없습니다.";
 
-      section.append(
-        unavailable,
-      );
+      section.append(unavailable);
     } else if (
       status.remainingUses <= 0
     ) {
@@ -1126,9 +1198,7 @@ export function createCommandPanel({
       depleted.textContent =
         "자체연막을 모두 사용했습니다.";
 
-      section.append(
-        depleted,
-      );
+      section.append(depleted);
     }
 
     return section;
@@ -1160,11 +1230,9 @@ export function createCommandPanel({
       renderObservationSection(
         unit,
       ),
-
       renderTurretControlSection(
         unit,
       ),
-
       renderVehicleSmokeSection(
         unit,
       ),
@@ -1233,9 +1301,7 @@ export function createCommandPanel({
     showMessage,
 
     refresh(category) {
-      this.render(
-        category,
-      );
+      this.render(category);
     },
   };
-        }
+}
