@@ -2,10 +2,10 @@
 // ATS PROJECT
 // File      : src/engine/detection.js
 // Sprint    : 3.9.1
-// Revision  : R6
+// Revision  : R7
 // Build     : 2026-08-05
 // Type      : PATCHED FULL REPLACEMENT
-// Purpose   : Directional detection using shared geometry and angle utilities
+// Purpose   : Directional detection with developer decision replay
 // ============================================================
 
 import {
@@ -544,6 +544,16 @@ function evaluateDetectionCandidate(
     effectiveVisualRange,
 
     effectiveIdentificationRange,
+
+    visualRange,
+
+    identificationRange,
+
+    observerRange,
+
+    identificationFactor,
+
+    concealmentPenalty,
   };
 }
 
@@ -568,6 +578,20 @@ function calculateDetectionStage(
 
       observerRole:
         null,
+
+      distance,
+
+      candidateCount:
+        0,
+
+      reason:
+        "no-active-observation-candidate",
+
+      effectiveVisualRange:
+        0,
+
+      effectiveIdentificationRange:
+        0,
     };
   }
 
@@ -628,6 +652,197 @@ function calculateDetectionStage(
 
     observerRole:
       best.role,
+
+    distance,
+
+    candidateCount:
+      candidates.length,
+
+    reason:
+      best.stage ===
+        DETECTION_STAGES.HIDDEN
+        ? "outside-effective-range"
+        : "detected",
+
+    effectiveVisualRange:
+      best.effectiveVisualRange,
+
+    effectiveIdentificationRange:
+      best.effectiveIdentificationRange,
+
+    visualRange:
+      best.visualRange,
+
+    identificationRange:
+      best.identificationRange,
+
+    observerRange:
+      best.observerRange,
+
+    identificationFactor:
+      best.identificationFactor,
+
+    concealmentPenalty:
+      best.concealmentPenalty,
+  };
+}
+
+function getDetectionResultScore(
+  result,
+) {
+  return (
+    nonNegativeOrDefault(
+      result?.effectiveVisualRange,
+      0,
+    ) +
+    nonNegativeOrDefault(
+      result?.effectiveIdentificationRange,
+      0,
+    )
+  );
+}
+
+function shouldReplaceBestAttempt(
+  current,
+  candidate,
+) {
+  if (!current) {
+    return true;
+  }
+
+  if (
+    candidate.stage !==
+    current.stage
+  ) {
+    return (
+      candidate.stage >
+      current.stage
+    );
+  }
+
+  const candidateScore =
+    getDetectionResultScore(
+      candidate,
+    );
+
+  const currentScore =
+    getDetectionResultScore(
+      current,
+    );
+
+  if (
+    candidateScore !==
+    currentScore
+  ) {
+    return (
+      candidateScore >
+      currentScore
+    );
+  }
+
+  return (
+    finiteOrDefault(
+      candidate.distance,
+      Infinity,
+    ) <
+    finiteOrDefault(
+      current.distance,
+      Infinity,
+    )
+  );
+}
+
+function createDetectionReplay({
+  turn,
+  finalStage,
+  observerUnitId,
+  observerRole,
+  result,
+  exposureMinimumStage,
+  exposureActive,
+  exposureApplied,
+}) {
+  return {
+    turn,
+
+    finalStage,
+
+    observerUnitId:
+      observerUnitId ??
+      null,
+
+    observerRole:
+      observerRole ??
+      null,
+
+    distance:
+      Number.isFinite(
+        result?.distance,
+      )
+        ? result.distance
+        : null,
+
+    candidateCount:
+      nonNegativeOrDefault(
+        result?.candidateCount,
+        0,
+      ),
+
+    effectiveVisualRange:
+      nonNegativeOrDefault(
+        result?.effectiveVisualRange,
+        0,
+      ),
+
+    effectiveIdentificationRange:
+      nonNegativeOrDefault(
+        result?.effectiveIdentificationRange,
+        0,
+      ),
+
+    baseVisualRange:
+      nonNegativeOrDefault(
+        result?.visualRange,
+        0,
+      ),
+
+    baseIdentificationRange:
+      nonNegativeOrDefault(
+        result?.identificationRange,
+        0,
+      ),
+
+    observerRangeFactor:
+      nonNegativeOrDefault(
+        result?.observerRange,
+        0,
+      ),
+
+    identificationFactor:
+      nonNegativeOrDefault(
+        result?.identificationFactor,
+        0,
+      ),
+
+    concealmentPenalty:
+      nonNegativeOrDefault(
+        result?.concealmentPenalty,
+        0,
+      ),
+
+    exposureMinimumStage,
+
+    exposureActive:
+      exposureActive === true,
+
+    exposureApplied:
+      exposureApplied === true,
+
+    reason:
+      exposureApplied
+        ? "recon-by-fire-contact"
+        : result?.reason ??
+          "no-friendly-observer",
   };
 }
 
@@ -696,6 +911,21 @@ export function updateDetection(
       let bestObserverRole =
         null;
 
+      let bestDetectionResult =
+        null;
+
+      let bestAttempt =
+        null;
+
+      let bestAttemptObserverId =
+        null;
+
+      const exposureActive =
+        isExposureActive(
+          enemy,
+          turn,
+        );
+
       const exposureMinimumStage =
         getExposureMinimumStage(
           enemy,
@@ -717,6 +947,19 @@ export function updateDetection(
               distance,
               turn,
             );
+
+          if (
+            shouldReplaceBestAttempt(
+              bestAttempt,
+              result,
+            )
+          ) {
+            bestAttempt =
+              result;
+
+            bestAttemptObserverId =
+              observer.id;
+          }
 
           if (
             result.stage >
@@ -741,9 +984,15 @@ export function updateDetection(
 
             bestObserverRole =
               result.observerRole;
+
+            bestDetectionResult =
+              result;
           }
         },
       );
+
+      const calculatedStage =
+        bestStage;
 
       bestStage =
         Math.max(
@@ -751,14 +1000,16 @@ export function updateDetection(
           exposureMinimumStage,
         );
 
-      if (
-        bestStage ===
-          DETECTION_STAGES.CONTACT &&
+      const exposureApplied =
+        bestStage >
+          calculatedStage &&
         exposureMinimumStage ===
-          DETECTION_STAGES.CONTACT &&
-        bestObserverId ===
-          null
-      ) {
+          DETECTION_STAGES.CONTACT;
+
+      if (exposureApplied) {
+        bestObserverId =
+          null;
+
         bestObserverRole =
           "recon-by-fire";
       }
@@ -791,6 +1042,32 @@ export function updateDetection(
 
       enemy.detectedByCrewRole =
         bestObserverRole;
+
+      enemy.detectionReplay =
+        createDetectionReplay({
+          turn,
+          finalStage:
+            bestStage,
+          observerUnitId:
+            exposureApplied
+              ? null
+              : bestObserverId ??
+                bestAttemptObserverId,
+          observerRole:
+            exposureApplied
+              ? "recon-by-fire"
+              : bestObserverRole ??
+                bestAttempt
+                  ?.observerRole,
+          result:
+            exposureApplied
+              ? bestAttempt
+              : bestDetectionResult ??
+                bestAttempt,
+          exposureMinimumStage,
+          exposureActive,
+          exposureApplied,
+        });
 
       if (
         bestStage !==
