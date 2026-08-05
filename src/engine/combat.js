@@ -2,7 +2,7 @@
 // ATS PROJECT
 // File      : src/engine/combat.js
 // Sprint    : 3.9.x
-// Revision  : R1
+// Revision  : R3
 // Build     : 2026-08-05
 // Type      : PATCHED FULL REPLACEMENT
 // Purpose   : Smoke creation, lifetime, and shared occlusion contract
@@ -45,7 +45,7 @@ const AMMUNITION_DAMAGE = Object.freeze({
   },
 });
 
-const SMOKE_DURATION_TURNS = 3;
+const SMOKE_DURATION_TURNS = 10;
 const SMOKE_RADIUS = 1;
 
 const SMOKE_SOURCES = Object.freeze({
@@ -760,7 +760,7 @@ export function deployVehicleSmoke(
 
   const centerDirection =
     getDirectionIndex(
-      unit.hullDirection,
+      unit.turretDirection,
     );
 
   const targetHexes = [
