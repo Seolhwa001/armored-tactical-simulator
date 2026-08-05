@@ -2,7 +2,7 @@
 // ATS PROJECT
 // File      : src/engine/actions.js
 // Sprint    : 3.9.1
-// Revision  : R6
+// Revision  : R7
 // Build     : 2026-08-05
 // Type      : PARTIAL PATCH
 // Purpose   : Crew actions with single-shot recon-by-fire and live target tracking
@@ -62,6 +62,15 @@ const FIRE_PROCEDURE_STATES =
     ADJUSTING:
       "adjusting",
   });
+
+
+export const DIRECTED_ACTION_STATES = Object.freeze({
+  TARGET_DESIGNATED: "target-designated",
+  ALIGNING: "aligning",
+  READY: "ready",
+  EXECUTING: "executing",
+  COMPLETED: "completed",
+});
 
 const LOADER_OBSERVATION_MODES =
   Object.freeze({
@@ -1417,8 +1426,13 @@ export function applyReconByFire(
   targetHex,
   turn,
 ) {
-  if (attacker.destroyed) {
-    return [];
+  if (
+    attacker.destroyed ||
+    !targetHex ||
+    !Number.isFinite(targetHex.column) ||
+    !Number.isFinite(targetHex.row)
+  ) {
+    return null;
   }
 
   const direction =
@@ -1427,131 +1441,141 @@ export function applyReconByFire(
       targetHex,
     );
 
-  setPersistentAction(
-    attacker,
-    {
-      type:
-        UNIT_ACTIONS
-          .RECON_BY_FIRE,
-
-      targetHex,
-      direction,
-
-      label:
-        "화력수색",
-    },
-    turn,
-  );
-
-  const affectedEnemies =
-    runtimeScenario.units.filter(
-      (enemy) =>
-        enemy.id !==
-          attacker.id &&
-        enemy.side !==
-          attacker.side &&
-        !enemy.destroyed &&
-        getHexDistance(
-          enemy,
-          targetHex,
-        ) <= 1,
+  const action =
+    setPersistentAction(
+      attacker,
+      {
+        type:
+          UNIT_ACTIONS.RECON_BY_FIRE,
+        targetHex,
+        direction,
+        crewRole:
+          CREW_ROLES.GUNNER,
+        label:
+          "화력수색 목표 지정",
+      },
+      turn,
     );
 
-  affectedEnemies.forEach(
-    (enemy) => {
-      const exposure =
-        25 +
-        Math.floor(
-          Math.random() *
-          31,
-        );
+  if (!action) {
+    return null;
+  }
 
-      enemy.temporaryExposure =
-        Math.max(
-          enemy
-            .temporaryExposure ??
-            0,
-          exposure,
-        );
+  action.internalState =
+    DIRECTED_ACTION_STATES
+      .TARGET_DESIGNATED;
+  action.operatorRole =
+    CREW_ROLES.GUNNER;
+  action.executionMethod =
+    "main-gun";
+  action.executionLimit = 1;
+  action.executionCount = 0;
 
-      enemy.exposedUntilTurn =
-        Math.max(
-          enemy.exposedUntilTurn ??
-            0,
-          turn + 2,
-        );
-
-      const revealChance =
-        Math.min(
-          0.9,
-          0.3 +
-          exposure / 100,
-        );
-
-      if (
-        Math.random() <
-        revealChance
-      ) {
-        enemy.detectionStage =
-          Math.max(
-            enemy.detectionStage ??
-              DETECTION_STAGES
-                .HIDDEN,
-            DETECTION_STAGES
-              .CONTACT,
-          );
-
-        enemy.visible =
-          true;
-
-        enemy.lastKnownPosition = {
-          column:
-            enemy.column,
-
-          row:
-            enemy.row,
-        };
-      }
-    },
-  );
-
-  return affectedEnemies;
+  return action;
 }
 
 function updateReconByFireAction(
   runtimeScenario,
   unit,
   turn,
+  moving,
+  executeDirectedAction,
 ) {
+  const action = unit.action;
+
   if (
-    unit.action?.type !==
-      UNIT_ACTIONS
-        .RECON_BY_FIRE ||
-    !unit.action.targetHex
+    action?.type !==
+      UNIT_ACTIONS.RECON_BY_FIRE ||
+    !action.targetHex
   ) {
-    return;
+    return null;
+  }
+
+  if (
+    action.internalState ===
+      DIRECTED_ACTION_STATES.COMPLETED ||
+    (action.executionCount ?? 0) >=
+      (action.executionLimit ?? 1)
+  ) {
+    clearPersistentAction(unit);
+    return null;
   }
 
   const direction =
     getDirectionBetween(
       unit,
-      unit.action.targetHex,
+      action.targetHex,
     );
 
-  setTurretTargetDirection(
-    unit,
-    direction,
-  );
+  action.direction = direction;
+  setTurretTargetDirection(unit, direction);
 
-  /*
-   * 화력수색 효과는 명령 입력 시 applyReconByFire()에서
-   * 한 번만 판정한다. 턴 처리에서는 포탑 방향만 보정한 뒤
-   * 행동을 종료하여 노출 확률과 만료 턴이 반복 갱신되지
-   * 않도록 한다.
-   */
-  clearPersistentAction(
+  if (!isTurretAligned(unit)) {
+    action.internalState =
+      DIRECTED_ACTION_STATES.ALIGNING;
+    unit.command =
+      "화력수색 방향 정렬 중";
+    return null;
+  }
+
+  if (
+    action.internalState !==
+      DIRECTED_ACTION_STATES.READY
+  ) {
+    action.internalState =
+      DIRECTED_ACTION_STATES.READY;
+    unit.command =
+      "화력수색 실행 준비";
+    return null;
+  }
+
+  action.internalState =
+    DIRECTED_ACTION_STATES.EXECUTING;
+
+  const result =
+    executeDirectedAction?.(
+      runtimeScenario,
+      unit,
+      turn,
+      {
+        actionType:
+          UNIT_ACTIONS.RECON_BY_FIRE,
+        targetHex:
+          action.targetHex,
+        executionMethod:
+          action.executionMethod,
+        moving,
+      },
+    );
+
+  if (!result?.success) {
+    action.internalState =
+      DIRECTED_ACTION_STATES.READY;
+    unit.command =
+      result?.reason ??
+      "화력수색 실행 대기";
+    return null;
+  }
+
+  action.executionCount =
+    (action.executionCount ?? 0) + 1;
+  action.internalState =
+    DIRECTED_ACTION_STATES.COMPLETED;
+
+  const completed = {
     unit,
-  );
+    actionType:
+      UNIT_ACTIONS.RECON_BY_FIRE,
+    targetHex: {
+      ...action.targetHex,
+    },
+    executionMethod:
+      action.executionMethod,
+    result,
+  };
+
+  clearPersistentAction(unit);
+  return completed;
 }
 
 function synchronizeTrackedFireTarget(
@@ -1768,9 +1792,15 @@ export function processPersistentActions(
 
     acceptHunterKillerTarget:
       options.acceptHunterKillerTarget,
+
+    executeDirectedAction:
+      options.executeDirectedAction,
   };
 
   const adjustedShots =
+    [];
+
+  const completedDirectedActions =
     [];
 
   runtimeScenario.units
@@ -1787,11 +1817,21 @@ export function processPersistentActions(
             unit.id,
           );
 
-        updateReconByFireAction(
-          runtimeScenario,
-          unit,
-          turn,
-        );
+        const completedDirectedAction =
+          updateReconByFireAction(
+            runtimeScenario,
+            unit,
+            turn,
+            moving,
+            fireControlFunctions
+              .executeDirectedAction,
+          );
+
+        if (completedDirectedAction) {
+          completedDirectedActions.push(
+            completedDirectedAction,
+          );
+        }
 
         const hunterKillerContext =
           updateHunterKillerTargeting(
@@ -1856,5 +1896,6 @@ export function processPersistentActions(
 
   return {
     adjustedShots,
+    completedDirectedActions,
   };
 }
