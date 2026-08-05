@@ -2,10 +2,10 @@
 // ATS PROJECT
 // File      : src/engine/actions.js
 // Sprint    : 3.9.2
-// Revision  : R8
+// Revision  : R9
 // Build     : 2026-08-05
 // Type      : PARTIAL PATCH
-// Purpose   : Directed-action stability and explicit CPS operating modes
+// Purpose   : Directed-action alignment start and selectable CPS modes
 // ============================================================
 
 import {
@@ -1118,6 +1118,63 @@ export function setCrewObservationDirection(
   return false;
 }
 
+export function setCommanderSightMode(
+  unit,
+  mode,
+) {
+  const sight =
+    getCommanderSight(unit);
+
+  if (
+    unit.destroyed ||
+    !sight?.operational ||
+    !Object.values(CPS_MODES)
+      .includes(mode)
+  ) {
+    return false;
+  }
+
+  if (
+    mode ===
+    CPS_MODES.HUNTER_KILLER
+  ) {
+    return false;
+  }
+
+  clearHunterKillerState(unit);
+
+  sight.active = true;
+  sight.cpsMode = mode;
+  sight.targetUnitId = null;
+  sight.tracking = false;
+
+  if (
+    mode ===
+    CPS_MODES.TURRET_COUPLED
+  ) {
+    return synchronizeCoupledCommanderSight(
+      unit,
+    );
+  }
+
+  const currentDirection =
+    normalizeAngle(
+      finiteOrDefault(
+        sight.direction ??
+          unit.turretDirection ??
+          unit.hullDirection,
+        0,
+      ),
+    );
+
+  sight.direction = currentDirection;
+  sight.targetDirection =
+    currentDirection;
+  sight.locked = true;
+
+  return true;
+}
+
 export function setCommanderSightDirection(
   unit,
   direction,
@@ -1563,9 +1620,18 @@ export function applyReconByFire(
     return null;
   }
 
+  const aligned =
+    isTurretAligned(attacker);
+
   action.internalState =
-    DIRECTED_ACTION_STATES
-      .TARGET_DESIGNATED;
+    aligned
+      ? DIRECTED_ACTION_STATES.READY
+      : DIRECTED_ACTION_STATES.ALIGNING;
+
+  attacker.command =
+    aligned
+      ? "화력수색 실행 준비"
+      : "화력수색 방향 정렬 중";
   action.operatorRole =
     CREW_ROLES.GUNNER;
   action.executionMethod =
