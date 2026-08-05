@@ -2,10 +2,10 @@
 // ATS PROJECT
 // File      : src/engine/fireControl.js
 // Sprint    : 3.9.1
-// Revision  : R4
+// Revision  : R5
 // Build     : 2026-08-05
-// Type      : FULL REPLACEMENT
-// Purpose   : Fire procedure, ammunition state, and shared hex targeting
+// Type      : PARTIAL PATCH
+// Purpose   : Fire procedure with explicit fire command and live target synchronization
 // ============================================================
 
 import { UNIT_ACTIONS } from "./constants/actionConstants.js";
@@ -312,6 +312,9 @@ export function createFireControl() {
     alignmentRequired:
       true,
 
+    fireCommandIssued:
+      false,
+
     lastShotResult:
       null,
   };
@@ -387,6 +390,9 @@ export function setFireTarget(
     FIRE_STATES.READY;
 
   fireControl.gunnerAutonomous =
+    false;
+
+  fireControl.fireCommandIssued =
     false;
 
   fireControl.lastShotResult =
@@ -590,6 +596,9 @@ export function issueFireCommand(
   fireControl.state =
     FIRE_STATES.READY;
 
+  fireControl.fireCommandIssued =
+    true;
+
   if (fireControl.loaded) {
     const aimingResult =
       beginAimingOrTraverse(
@@ -712,6 +721,32 @@ function completeLoading(
     };
   }
 
+  if (
+    fireControl.fireCommandIssued !==
+      true
+  ) {
+    setProcedureState(
+      unit,
+      FIRE_PROCEDURE_STATES
+        .TARGET_DESIGNATED,
+      turn,
+    );
+
+    unit.command =
+      "장전 완료 / 사격명령 대기";
+
+    return {
+      success: true,
+
+      ammunition:
+        loadedAmmunition,
+
+      aligned: false,
+      targetAvailable: true,
+      awaitingFireCommand: true,
+    };
+  }
+
   const aimingResult =
     beginAimingOrTraverse(
       unit,
@@ -786,24 +821,8 @@ export function updateFireProcedure(
   }
 
   if (
-    fireControl.loaded &&
-    fireControl.procedureState ===
-      FIRE_PROCEDURE_STATES
-        .TARGET_DESIGNATED
-  ) {
-    const aimingResult =
-      beginAimingOrTraverse(
-        unit,
-        turn,
-      );
-
-    return {
-      changed: true,
-      state: aimingResult.state,
-    };
-  }
-
-  if (
+    fireControl.fireCommandIssued ===
+      true &&
     fireControl.procedureState ===
       FIRE_PROCEDURE_STATES.TRAVERSING &&
     isTurretAligned(unit)
@@ -832,6 +851,8 @@ export function updateFireProcedure(
   }
 
   if (
+    fireControl.fireCommandIssued ===
+      true &&
     fireControl.procedureState ===
       FIRE_PROCEDURE_STATES.AIMING &&
     fireControl.aimStartedTurn !==
@@ -868,8 +889,92 @@ export function updateFireProcedure(
   };
 }
 
-function validateFirePermission(
+function synchronizeFireTarget(
+  runtimeScenario,
   unit,
+  turn = null,
+) {
+  const fireControl =
+    unit.fireControl;
+
+  if (
+    !runtimeScenario ||
+    !fireControl?.targetHex ||
+    !unit.turretControl
+  ) {
+    return {
+      success: false,
+      reason:
+        "사격 목표를 동기화할 수 없습니다.",
+    };
+  }
+
+  if (fireControl.targetUnitId) {
+    const target =
+      runtimeScenario.units.find(
+        (candidate) =>
+          candidate.id ===
+            fireControl.targetUnitId &&
+          !candidate.destroyed,
+      );
+
+    if (!target) {
+      fireControl.targetHex =
+        null;
+
+      fireControl.targetUnitId =
+        null;
+
+      fireControl.fireCommandIssued =
+        false;
+
+      resetAimingState(
+        unit,
+      );
+
+      setProcedureState(
+        unit,
+        FIRE_PROCEDURE_STATES.STOPPED,
+        turn,
+      );
+
+      return {
+        success: false,
+        reason:
+          "지정 표적이 소실되었습니다.",
+      };
+    }
+
+    fireControl.targetHex = {
+      column:
+        target.column,
+
+      row:
+        target.row,
+    };
+  }
+
+  const direction =
+    getDirectionBetween(
+      unit,
+      fireControl.targetHex,
+    );
+
+  setTurretTargetDirection(
+    unit,
+    direction,
+  );
+
+  return {
+    success: true,
+    direction,
+  };
+}
+
+function validateFirePermission(
+  runtimeScenario,
+  unit,
+  turn,
   options,
 ) {
   if (unit.destroyed) {
@@ -887,6 +992,33 @@ function validateFirePermission(
 
       reason:
         "사격 목표가 지정되지 않았습니다.",
+    };
+  }
+
+  if (
+    unit.fireControl.fireCommandIssued !==
+      true
+  ) {
+    return {
+      allowed: false,
+
+      reason:
+        "사격명령이 하달되지 않았습니다.",
+    };
+  }
+
+  const synchronization =
+    synchronizeFireTarget(
+      runtimeScenario,
+      unit,
+      turn,
+    );
+
+  if (!synchronization.success) {
+    return {
+      allowed: false,
+      reason:
+        synchronization.reason,
     };
   }
 
@@ -941,6 +1073,14 @@ function registerShot(
   clearLoadedRound(unit);
   resetAimingState(unit);
 
+  if (
+    fireControl.state !==
+      FIRE_STATES.ADJUST
+  ) {
+    fireControl.fireCommandIssued =
+      false;
+  }
+
   const selectedAmmunition =
     fireControl.ammunition;
 
@@ -994,7 +1134,9 @@ export function fireSingleShot(
 ) {
   const permission =
     validateFirePermission(
+      runtimeScenario,
       unit,
+      turn,
       options,
     );
 
@@ -1062,7 +1204,9 @@ export function enableAdjustedFire(
 ) {
   const permission =
     validateFirePermission(
+      runtimeScenario,
       unit,
+      turn,
       options,
     );
 
@@ -1077,6 +1221,9 @@ export function enableAdjustedFire(
     FIRE_STATES.ADJUST;
 
   unit.fireControl.gunnerAutonomous =
+    true;
+
+  unit.fireControl.fireCommandIssued =
     true;
 
   const shotResult =
@@ -1137,7 +1284,9 @@ export function registerAdjustedShot(
 
   const permission =
     validateFirePermission(
+      runtimeScenario,
       unit,
+      turn,
       options,
     );
 
@@ -1200,6 +1349,9 @@ export function ceaseFire(unit) {
     null;
 
   fireControl.gunnerAutonomous =
+    false;
+
+  fireControl.fireCommandIssued =
     false;
 
   resetAimingState(unit);

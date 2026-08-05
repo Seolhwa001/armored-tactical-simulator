@@ -2,10 +2,10 @@
 // ATS PROJECT
 // File      : src/engine/actions.js
 // Sprint    : 3.9.1
-// Revision  : R5
+// Revision  : R6
 // Build     : 2026-08-05
-// Type      : PATCHED FULL REPLACEMENT
-// Purpose   : Crew actions using shared geometry and angle utilities
+// Type      : PARTIAL PATCH
+// Purpose   : Crew actions with single-shot recon-by-fire and live target tracking
 // ============================================================
 
 import {
@@ -1446,8 +1446,10 @@ export function applyReconByFire(
   const affectedEnemies =
     runtimeScenario.units.filter(
       (enemy) =>
-        enemy.side ===
-          "enemy" &&
+        enemy.id !==
+          attacker.id &&
+        enemy.side !==
+          attacker.side &&
         !enemy.destroyed &&
         getHexDistance(
           enemy,
@@ -1541,12 +1543,117 @@ function updateReconByFireAction(
     direction,
   );
 
-  applyReconByFire(
-    runtimeScenario,
+  /*
+   * 화력수색 효과는 명령 입력 시 applyReconByFire()에서
+   * 한 번만 판정한다. 턴 처리에서는 포탑 방향만 보정한 뒤
+   * 행동을 종료하여 노출 확률과 만료 턴이 반복 갱신되지
+   * 않도록 한다.
+   */
+  clearPersistentAction(
     unit,
-    unit.action.targetHex,
-    turn,
   );
+}
+
+function synchronizeTrackedFireTarget(
+  runtimeScenario,
+  unit,
+  turn,
+) {
+  const fireControl =
+    unit.fireControl;
+
+  if (
+    !fireControl?.targetHex ||
+    !unit.turretControl
+  ) {
+    return false;
+  }
+
+  if (fireControl.targetUnitId) {
+    const target =
+      runtimeScenario.units.find(
+        (candidate) =>
+          candidate.id ===
+            fireControl.targetUnitId &&
+          !candidate.destroyed,
+      );
+
+    if (!target) {
+      fireControl.targetHex =
+        null;
+
+      fireControl.targetUnitId =
+        null;
+
+      fireControl.aiming =
+        false;
+
+      fireControl.aimStartedTurn =
+        null;
+
+      return false;
+    }
+
+    fireControl.targetHex = {
+      column:
+        target.column,
+
+      row:
+        target.row,
+    };
+  }
+
+  const targetDirection =
+    getDirectionBetween(
+      unit,
+      fireControl.targetHex,
+    );
+
+  const directionChanged =
+    !areDirectionsAligned(
+      unit.turretControl
+        .targetDirection,
+      targetDirection,
+    );
+
+  setTurretTargetDirection(
+    unit,
+    targetDirection,
+  );
+
+  if (
+    directionChanged &&
+    fireControl.fireCommandIssued ===
+      true
+  ) {
+    fireControl.aiming =
+      false;
+
+    fireControl.aimStartedTurn =
+      null;
+
+    if (
+      fireControl.loaded &&
+      fireControl.procedureState !==
+        FIRE_PROCEDURE_STATES
+          .LOADING &&
+      fireControl.procedureState !==
+        FIRE_PROCEDURE_STATES
+          .RELOADING
+    ) {
+      fireControl.procedureState =
+        FIRE_PROCEDURE_STATES
+          .TRAVERSING;
+
+      fireControl.procedureTurn =
+        turn;
+
+      unit.command =
+        "포탑 선회";
+    }
+  }
+
+  return true;
 }
 
 function updateAdjustedFireAction(
@@ -1692,6 +1799,12 @@ export function processPersistentActions(
             runtimeScenario,
             hunterKillerStates,
           );
+
+        synchronizeTrackedFireTarget(
+          runtimeScenario,
+          unit,
+          turn,
+        );
 
         updateTurretRotation(
           unit,
