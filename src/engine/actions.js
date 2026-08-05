@@ -1,11 +1,11 @@
 // ============================================================
 // ATS PROJECT
 // File      : src/engine/actions.js
-// Sprint    : 3.9.1
-// Revision  : R7
+// Sprint    : 3.9.2
+// Revision  : R8
 // Build     : 2026-08-05
 // Type      : PARTIAL PATCH
-// Purpose   : Crew actions with single-shot recon-by-fire and live target tracking
+// Purpose   : Directed-action stability and explicit CPS operating modes
 // ============================================================
 
 import {
@@ -70,6 +70,12 @@ export const DIRECTED_ACTION_STATES = Object.freeze({
   READY: "ready",
   EXECUTING: "executing",
   COMPLETED: "completed",
+});
+
+export const CPS_MODES = Object.freeze({
+  TURRET_COUPLED: "turret-coupled",
+  INDEPENDENT: "independent",
+  HUNTER_KILLER: "hunter-killer",
 });
 
 const LOADER_OBSERVATION_MODES =
@@ -267,6 +273,71 @@ function getCommanderSight(unit) {
       ?.commanderIndependentSight ??
     null
   );
+}
+
+function ensureCommanderSightMode(
+  unit,
+) {
+  const sight =
+    getCommanderSight(unit);
+
+  if (!sight) {
+    return null;
+  }
+
+  if (
+    !Object.values(
+      CPS_MODES,
+    ).includes(sight.cpsMode)
+  ) {
+    sight.cpsMode =
+      CPS_MODES.TURRET_COUPLED;
+  }
+
+  return sight.cpsMode;
+}
+
+function synchronizeCoupledCommanderSight(
+  unit,
+  turn = null,
+) {
+  const sight =
+    getCommanderSight(unit);
+
+  if (
+    !sight ||
+    ensureCommanderSightMode(unit) !==
+      CPS_MODES.TURRET_COUPLED
+  ) {
+    return false;
+  }
+
+  const turretDirection =
+    normalizeAngle(
+      finiteOrDefault(
+        unit.turretDirection ??
+          unit.hullDirection,
+        0,
+      ),
+    );
+
+  sight.direction =
+    turretDirection;
+  sight.targetDirection =
+    turretDirection;
+  sight.targetUnitId =
+    null;
+  sight.tracking =
+    false;
+  sight.locked =
+    true;
+
+  if (turn !== null) {
+    sight.lastUpdatedTurn =
+      turn;
+  }
+
+  return true;
 }
 
 function getHunterKiller(unit) {
@@ -651,6 +722,19 @@ export function updateCommanderSightRotation(
     return false;
   }
 
+  const mode =
+    ensureCommanderSightMode(unit);
+
+  if (
+    mode ===
+    CPS_MODES.TURRET_COUPLED
+  ) {
+    return synchronizeCoupledCommanderSight(
+      unit,
+      turn,
+    );
+  }
+
   const currentDirection =
     finiteOrDefault(
       sight.direction ??
@@ -819,6 +903,12 @@ export function synchronizeCrewObservationDirections(
   }
 
   updateLoaderObservation(
+    unit,
+    turn,
+  );
+
+  ensureCommanderSightMode(unit);
+  synchronizeCoupledCommanderSight(
     unit,
     turn,
   );
@@ -1058,6 +1148,9 @@ export function setCommanderSightDirection(
   sight.active =
     true;
 
+  sight.cpsMode =
+    CPS_MODES.INDEPENDENT;
+
   sight.targetDirection =
     normalizeAngle(
       direction,
@@ -1185,6 +1278,9 @@ export function designateHunterKillerTarget(
   sight.active =
     true;
 
+  sight.cpsMode =
+    CPS_MODES.HUNTER_KILLER;
+
   sight.targetDirection =
     targetDirection;
 
@@ -1240,6 +1336,9 @@ function clearHunterKillerTarget(
     null;
 
   if (sight) {
+    sight.cpsMode =
+      CPS_MODES.TURRET_COUPLED;
+
     sight.active =
       false;
 
@@ -1326,6 +1425,9 @@ function updateHunterKillerTargeting(
 
     sight.active =
       true;
+
+    sight.cpsMode =
+      CPS_MODES.HUNTER_KILLER;
 
     sight.targetDirection =
       targetDirection;
@@ -1468,6 +1570,25 @@ export function applyReconByFire(
     CREW_ROLES.GUNNER;
   action.executionMethod =
     "main-gun";
+  action.requestedResourceType =
+    attacker.fireControl
+      ?.ammunition ??
+    null;
+  action.availableResourceType =
+    attacker.fireControl
+      ?.loadedAmmunition ??
+    null;
+  action.resourceAvailable =
+    attacker.fireControl?.loaded ===
+      true &&
+    Boolean(
+      action.availableResourceType,
+    );
+  action.loadedState =
+    attacker.fireControl?.loaded ===
+      true;
+  action.failureReason =
+    null;
   action.executionLimit = 1;
   action.executionCount = 0;
 
@@ -1544,16 +1665,33 @@ function updateReconByFireAction(
           action.targetHex,
         executionMethod:
           action.executionMethod,
+        requestedResourceType:
+          action.requestedResourceType,
         moving,
       },
     );
 
   if (!result?.success) {
-    action.internalState =
-      DIRECTED_ACTION_STATES.READY;
-    unit.command =
+    action.availableResourceType =
+      result?.availableResourceType ??
+      null;
+    action.resourceAvailable =
+      result?.resourceAvailable ===
+      true;
+    action.loadedState =
+      result?.loadedState ===
+      true;
+    action.failureReason =
       result?.reason ??
-      "화력수색 실행 대기";
+      "화력수색 실행 실패";
+
+    const failureMessage =
+      action.failureReason;
+
+    clearPersistentAction(unit);
+    unit.command =
+      `화력수색 취소: ${failureMessage}`;
+
     return null;
   }
 

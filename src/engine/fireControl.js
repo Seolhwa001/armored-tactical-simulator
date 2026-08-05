@@ -1,11 +1,11 @@
 // ============================================================
 // ATS PROJECT
 // File      : src/engine/fireControl.js
-// Sprint    : 3.9.1
-// Revision  : R7
+// Sprint    : 3.9.2
+// Revision  : R8
 // Build     : 2026-08-05
 // Type      : PATCHED FULL REPLACEMENT
-// Purpose   : Fire procedure with abstract directed-action reactions
+// Purpose   : Explicit-command firing and directed-action resource validation
 // ============================================================
 
 import { UNIT_ACTIONS } from "./constants/actionConstants.js";
@@ -320,6 +320,16 @@ export function createFireControl() {
 
     lastShotResult:
       null,
+
+    directedActionStatus: {
+      executionMethod: null,
+      requestedResourceType: null,
+      availableResourceType: null,
+      resourceAvailable: false,
+      loadedState: false,
+      failureReason: null,
+      lastUpdatedTurn: null,
+    },
   };
 }
 
@@ -337,8 +347,34 @@ export function selectAmmunition(
     return false;
   }
 
-  unit.fireControl.ammunition =
+  const fireControl =
+    unit.fireControl;
+
+  fireControl.ammunition =
     ammunition;
+
+  fireControl.fireCommandIssued =
+    false;
+
+  resetAimingState(unit);
+
+  if (hasFireTarget(unit)) {
+    setProcedureState(
+      unit,
+      FIRE_PROCEDURE_STATES
+        .TARGET_DESIGNATED,
+    );
+
+    unit.command =
+      "탄종 선택 / 사격명령 대기";
+  } else if (
+    !fireControl.loading
+  ) {
+    setProcedureState(
+      unit,
+      FIRE_PROCEDURE_STATES.STOPPED,
+    );
+  }
 
   return true;
 }
@@ -1411,16 +1447,60 @@ export function executeDirectedAction(
   turn,
   options = {},
 ) {
+  const fireControl =
+    unit?.fireControl;
+
+  const executionMethod =
+    options.executionMethod ??
+    null;
+
+  const requestedResourceType =
+    options.requestedResourceType ??
+    fireControl?.ammunition ??
+    null;
+
+  const availableResourceType =
+    fireControl?.loadedAmmunition ??
+    null;
+
+  const loadedState =
+    fireControl?.loaded === true;
+
+  const status = {
+    executionMethod,
+    requestedResourceType,
+    availableResourceType,
+    resourceAvailable:
+      loadedState &&
+      Boolean(availableResourceType) &&
+      (
+        !requestedResourceType ||
+        requestedResourceType ===
+          availableResourceType
+      ),
+    loadedState,
+    failureReason: null,
+    lastUpdatedTurn: turn,
+  };
+
+  if (fireControl) {
+    fireControl.directedActionStatus =
+      status;
+  }
+
   if (
-    unit.destroyed ||
-    !unit.fireControl ||
+    unit?.destroyed ||
+    !fireControl ||
     !unit.turretControl ||
     !options.targetHex
   ) {
+    status.failureReason =
+      "방향성 행동을 실행할 수 없습니다.";
+
     return {
       success: false,
-      reason:
-        "방향성 행동을 실행할 수 없습니다.",
+      reason: status.failureReason,
+      ...status,
     };
   }
 
@@ -1442,28 +1522,44 @@ export function executeDirectedAction(
     );
 
   if (!permission.allowed) {
+    status.failureReason =
+      permission.reason;
+
     return {
       success: false,
-      reason: permission.reason,
+      reason: status.failureReason,
+      ...status,
     };
   }
-
-  const fireControl =
-    unit.fireControl;
 
   if (
-    !fireControl.loaded ||
-    !fireControl.loadedAmmunition
+    !loadedState ||
+    !availableResourceType
   ) {
+    status.failureReason =
+      "장전된 실행 자원이 없습니다.";
+
     return {
       success: false,
-      reason:
-        "사용 가능한 자원이 준비되지 않았습니다.",
+      reason: status.failureReason,
+      ...status,
     };
   }
 
-  const resourceType =
-    fireControl.loadedAmmunition;
+  if (
+    requestedResourceType &&
+    requestedResourceType !==
+      availableResourceType
+  ) {
+    status.failureReason =
+      "요청 자원과 현재 장전 자원이 일치하지 않습니다.";
+
+    return {
+      success: false,
+      reason: status.failureReason,
+      ...status,
+    };
+  }
 
   const reactionValue = 20;
 
@@ -1481,12 +1577,24 @@ export function executeDirectedAction(
 
   fireControl.roundsFired += 1;
   fireControl.lastFiredTurn = turn;
+  fireControl.fireCommandIssued = false;
+
+  status.resourceAvailable = true;
+  status.failureReason = null;
+  status.availableResourceType =
+    availableResourceType;
+
   fireControl.lastShotResult = {
     success: true,
     resourceSpent: 1,
     affectedUnitIds,
     reactionValue,
-    resourceType,
+    resourceType:
+      availableResourceType,
+  };
+
+  fireControl.directedActionStatus = {
+    ...status,
   };
 
   return {
@@ -1494,7 +1602,9 @@ export function executeDirectedAction(
     resourceSpent: 1,
     affectedUnitIds,
     reactionValue,
-    resourceType,
+    resourceType:
+      availableResourceType,
+    ...status,
   };
 }
 
