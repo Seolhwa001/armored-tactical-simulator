@@ -2,10 +2,10 @@
 // ATS PROJECT
 // File      : src/app.js
 // Sprint    : 3.9.1
-// Revision  : R1
+// Revision  : R2
 // Build     : 2026-08-05
 // Type      : PATCHED FULL REPLACEMENT
-// Purpose   : Application integration with Developer HUD and shared geometry
+// Purpose   : Fire-panel recon targeting and Developer HUD integration
 // ============================================================
 
 import {
@@ -689,6 +689,11 @@ firePanel = createFirePanel({
   onBeginTargetSelection() {
     commandController
       ?.beginFireTargetSelection();
+  },
+
+  onBeginReconByFireSelection() {
+    commandController
+      ?.beginReconByFireTargetSelection();
   },
 
   onFireEffect(
