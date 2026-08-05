@@ -2,10 +2,10 @@
 // ATS PROJECT
 // File      : src/controllers/mapInputController.js
 // Sprint    : 3.9.1
-// Revision  : R6
+// Revision  : R7
 // Build     : 2026-08-05
 // Type      : FULL REPLACEMENT
-// Purpose   : Map input, shared hex targeting, and developer detection debug
+// Purpose   : Map input, shared hex targeting, detection debug, and exposure debug
 // ============================================================
 
 import {
@@ -151,6 +151,60 @@ export function createMapInputController({
     return `${confidence}%`;
   }
 
+  function getTemporaryExposureValue(
+    unit,
+  ) {
+    if (
+      !Number.isFinite(
+        unit.temporaryExposure,
+      )
+    ) {
+      return 0;
+    }
+
+    return Math.max(
+      0,
+      unit.temporaryExposure,
+    );
+  }
+
+  function isTemporaryExposureActive(
+    unit,
+  ) {
+    const exposure =
+      getTemporaryExposureValue(
+        unit,
+      );
+
+    return (
+      exposure > 0 &&
+      Number.isFinite(
+        unit.exposedUntilTurn,
+      ) &&
+      unit.exposedUntilTurn >=
+        state.turn
+    );
+  }
+
+  function getTemporaryExposureLabel(
+    unit,
+  ) {
+    if (
+      !isTemporaryExposureActive(
+        unit,
+      )
+    ) {
+      return "없음";
+    }
+
+    return (
+      `+${getTemporaryExposureValue(
+        unit,
+      )} / TURN ` +
+      `${unit.exposedUntilTurn}까지`
+    );
+  }
+
   function createDeveloperDetectionMessage(
     unit,
   ) {
@@ -165,6 +219,9 @@ export function createMapInputController({
         unit,
       )}`,
       `탐지 승무원 ${getDetectionCrewRoleLabel(
+        unit,
+      )}`,
+      `화력수색 노출 ${getTemporaryExposureLabel(
         unit,
       )}`,
     ].join(" | ");
@@ -791,4 +848,4 @@ export function createMapInputController({
     handleMapTap,
     handleHexSelection,
   };
-}
+          }
