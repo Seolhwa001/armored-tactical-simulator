@@ -2,9 +2,9 @@
 // ATS PROJECT
 // File      : src/app.js
 // Sprint    : 3.9.1
-// Revision  : R3
+// Revision  : R4
 // Build     : 2026-08-05
-// Type      : PATCHED FULL REPLACEMENT
+// Type      : PARTIAL PATCH
 // Purpose   : Fire-panel recon targeting and Developer HUD integration
 // ============================================================
 
@@ -907,7 +907,22 @@ function handleAction(action) {
   if (
     action === "open-battle"
   ) {
+    scenarioController
+      .startScenario();
+
+    firePanel.reset();
+
+    state.activeCategory =
+      null;
+
+    elements.commandOptions
+      .replaceChildren();
+
     showScreen("battle");
+
+    setMessage(
+      "새 전투를 시작했습니다.",
+    );
 
     return;
   }
