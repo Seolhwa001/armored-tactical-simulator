@@ -1,4 +1,12 @@
-// src/ui/firePanel.js — 전체 교체
+// ============================================================
+// ATS PROJECT
+// File      : src/ui/firePanel.js
+// Sprint    : 3.9.1
+// Revision  : R5
+// Build     : 2026-08-05
+// Type      : FULL REPLACEMENT
+// Purpose   : Fire UI with Hunter Killer target and handoff status
+// ============================================================
 
 import {
   AMMUNITION_TYPES,
@@ -11,6 +19,10 @@ import {
   selectAmmunition,
   setFireTarget,
 } from "../engine/fireControl.js";
+
+import {
+  HUNTER_KILLER_STATES,
+} from "../engine/runtime/runtimeConstants.js";
 
 import {
   getTurretStatus,
@@ -36,6 +48,14 @@ const PROCEDURE_LABELS = Object.freeze({
   [FIRE_PROCEDURE_STATES.ADJUSTING]: "쏴-수정",
 });
 
+const HUNTER_KILLER_LABELS = Object.freeze({
+  [HUNTER_KILLER_STATES.SEARCHING]: "탐색",
+  [HUNTER_KILLER_STATES.TARGET_FOUND]: "표적 발견",
+  [HUNTER_KILLER_STATES.DESIGNATING]: "표적지향",
+  [HUNTER_KILLER_STATES.HANDOFF]: "표적 인계",
+  [HUNTER_KILLER_STATES.TRACKING]: "포수 추적",
+});
+
 const TURRET_MODE_LABELS = Object.freeze({
   normal: "정상구동",
   emergency: "비상구동",
@@ -47,16 +67,26 @@ function getAmmunitionLabel(ammunition) {
     return "없음";
   }
 
-  return AMMUNITION_LABELS[ammunition] ?? ammunition;
+  return (
+    AMMUNITION_LABELS[
+      ammunition
+    ] ??
+    ammunition
+  );
 }
 
-function createButton(label, options = {}) {
-  const button = document.createElement("button");
+function createButton(
+  label,
+  options = {},
+) {
+  const button =
+    document.createElement("button");
 
   button.type = "button";
   button.className = "command-option";
   button.textContent = label;
-  button.disabled = options.disabled === true;
+  button.disabled =
+    options.disabled === true;
 
   button.classList.toggle(
     "is-selected",
@@ -68,7 +98,10 @@ function createButton(label, options = {}) {
     options.current === true,
   );
 
-  if (options.onClick) {
+  if (
+    typeof options.onClick ===
+    "function"
+  ) {
     button.addEventListener(
       "click",
       options.onClick,
@@ -79,8 +112,11 @@ function createButton(label, options = {}) {
 }
 
 function createStatusRow(label, value) {
-  const row = document.createElement("span");
-  const strong = document.createElement("strong");
+  const row =
+    document.createElement("span");
+
+  const strong =
+    document.createElement("strong");
 
   row.append(`${label}: `);
 
@@ -91,42 +127,156 @@ function createStatusRow(label, value) {
   return row;
 }
 
-function createStatusPanel(unit) {
-  const panel = document.createElement("div");
-  const turretStatus = getTurretStatus(unit);
-  const fireControl = unit.fireControl;
+function getRuntimeUnitById(
+  runtimeScenario,
+  unitId,
+) {
+  if (
+    !unitId ||
+    !Array.isArray(
+      runtimeScenario?.units,
+    )
+  ) {
+    return null;
+  }
 
-  panel.className = "turret-status-panel";
+  return (
+    runtimeScenario.units.find(
+      (unit) =>
+        unit.id === unitId,
+    ) ?? null
+  );
+}
 
-  const stabilizer = turretStatus?.stabilizerAvailable
-    ? "사용"
-    : turretStatus?.stabilizerOperational
-      ? "미사용"
-      : "고장";
+function getUnitDisplayName(unit) {
+  if (!unit) {
+    return "없음";
+  }
 
-  const alignment = turretStatus?.aligned
-    ? "정렬 완료"
-    : "선회 중";
+  return (
+    unit.name ??
+    unit.id ??
+    "없음"
+  );
+}
+
+function getHunterKillerTargetId(
+  hunterKiller,
+) {
+  return (
+    hunterKiller
+      ?.handedOffTargetUnitId ??
+    hunterKiller
+      ?.designatedTargetUnitId ??
+    hunterKiller
+      ?.detectedTargetUnitId ??
+    null
+  );
+}
+
+function getHunterKillerHandoffLabel(
+  hunterKiller,
+) {
+  if (!hunterKiller?.enabled) {
+    return "사용 불가";
+  }
+
+  if (
+    hunterKiller.state ===
+      HUNTER_KILLER_STATES.DESIGNATING
+  ) {
+    return "CPS·포탑 정렬 중";
+  }
+
+  if (
+    hunterKiller.state ===
+      HUNTER_KILLER_STATES.HANDOFF
+  ) {
+    return "포수 인계 중";
+  }
+
+  if (
+    hunterKiller.state ===
+      HUNTER_KILLER_STATES.TRACKING &&
+    hunterKiller.handedOffTargetUnitId
+  ) {
+    return "포수 인계 완료";
+  }
+
+  return "미인계";
+}
+
+function createStatusPanel(
+  unit,
+  runtimeScenario,
+) {
+  const panel =
+    document.createElement("div");
+
+  const turretStatus =
+    getTurretStatus(unit);
+
+  const fireControl =
+    unit.fireControl;
+
+  const hunterKiller =
+    unit.crewObservation
+      ?.hunterKiller;
+
+  const hunterKillerTargetId =
+    getHunterKillerTargetId(
+      hunterKiller,
+    );
+
+  const hunterKillerTarget =
+    getRuntimeUnitById(
+      runtimeScenario,
+      hunterKillerTargetId,
+    );
+
+  panel.className =
+    "turret-status-panel";
+
+  const stabilizer =
+    turretStatus
+      ?.stabilizerAvailable
+      ? "사용"
+      : turretStatus
+          ?.stabilizerOperational
+        ? "미사용"
+        : "고장";
+
+  const alignment =
+    turretStatus?.aligned
+      ? "정렬 완료"
+      : "선회 중";
 
   const procedure =
-    PROCEDURE_LABELS[fireControl.procedureState] ??
+    PROCEDURE_LABELS[
+      fireControl.procedureState
+    ] ??
     fireControl.procedureState;
 
-  const chamberStatus = fireControl.loaded
-    ? getAmmunitionLabel(
-        fireControl.loadedAmmunition,
-      )
-    : "미장전";
+  const chamberStatus =
+    fireControl.loaded
+      ? getAmmunitionLabel(
+          fireControl
+            .loadedAmmunition,
+        )
+      : "미장전";
 
-  const loadingStatus = fireControl.loading
-    ? getAmmunitionLabel(
-        fireControl.loadingAmmunition,
-      )
-    : "없음";
+  const loadingStatus =
+    fireControl.loading
+      ? getAmmunitionLabel(
+          fireControl
+            .loadingAmmunition,
+        )
+      : "없음";
 
-  const selectedAmmunition = getAmmunitionLabel(
-    fireControl.ammunition,
-  );
+  const selectedAmmunition =
+    getAmmunitionLabel(
+      fireControl.ammunition,
+    );
 
   panel.append(
     createStatusRow(
@@ -151,20 +301,43 @@ function createStatusPanel(unit) {
     ),
     createStatusRow(
       "구동",
-      TURRET_MODE_LABELS[turretStatus?.mode] ??
-        "-",
+      TURRET_MODE_LABELS[
+        turretStatus?.mode
+      ] ?? "-",
     ),
     createStatusRow(
       "안정화",
       stabilizer,
     ),
+    createStatusRow(
+      "헌터킬러",
+      HUNTER_KILLER_LABELS[
+        hunterKiller?.state
+      ] ?? "사용 불가",
+    ),
+    createStatusRow(
+      "HK 지정 표적",
+      getUnitDisplayName(
+        hunterKillerTarget,
+      ),
+    ),
+    createStatusRow(
+      "포수 인계",
+      getHunterKillerHandoffLabel(
+        hunterKiller,
+      ),
+    ),
   );
 
   if (turretStatus?.warning) {
-    const warning = document.createElement("p");
+    const warning =
+      document.createElement("p");
 
-    warning.className = "turret-warning";
-    warning.textContent = turretStatus.warning;
+    warning.className =
+      "turret-warning";
+
+    warning.textContent =
+      turretStatus.warning;
 
     panel.append(warning);
   }
@@ -172,8 +345,11 @@ function createStatusPanel(unit) {
   return panel;
 }
 
-function createProcedureProgress(currentState) {
-  const progress = document.createElement("div");
+function createProcedureProgress(
+  currentState,
+) {
+  const progress =
+    document.createElement("div");
 
   progress.className =
     "fire-procedure-progress";
@@ -190,30 +366,37 @@ function createProcedureProgress(currentState) {
   ];
 
   const currentIndex =
-    stages.indexOf(currentState);
-
-  stages.forEach((stage, index) => {
-    const item = document.createElement("span");
-
-    item.className =
-      "fire-procedure-step";
-
-    item.textContent =
-      PROCEDURE_LABELS[stage];
-
-    item.classList.toggle(
-      "is-current",
-      stage === currentState,
+    stages.indexOf(
+      currentState,
     );
 
-    item.classList.toggle(
-      "is-complete",
-      currentIndex >= 0 &&
-        index < currentIndex,
-    );
+  stages.forEach(
+    (stage, index) => {
+      const item =
+        document.createElement("span");
 
-    progress.append(item);
-  });
+      item.className =
+        "fire-procedure-step";
+
+      item.textContent =
+        PROCEDURE_LABELS[
+          stage
+        ];
+
+      item.classList.toggle(
+        "is-current",
+        stage === currentState,
+      );
+
+      item.classList.toggle(
+        "is-complete",
+        currentIndex >= 0 &&
+          index < currentIndex,
+      );
+
+      progress.append(item);
+    },
+  );
 
   return progress;
 }
@@ -223,12 +406,19 @@ function formatShotResult(result) {
     return "발사 완료";
   }
 
-  const ammunition = result.ammunition
-    ? `${getAmmunitionLabel(result.ammunition)} / `
-    : "";
+  const ammunition =
+    result.ammunition
+      ? (
+          `${getAmmunitionLabel(
+            result.ammunition,
+          )} / `
+        )
+      : "";
 
   if (result.smokeCreated) {
-    return `${ammunition}연막 형성`;
+    return (
+      `${ammunition}연막 형성`
+    );
   }
 
   if (!result.hit) {
@@ -246,9 +436,14 @@ function formatShotResult(result) {
   }
 
   const remainingHealth =
-    result.remainingHealth !== null &&
-    result.remainingHealth !== undefined
-      ? ` / 잔여 체력 ${result.remainingHealth}`
+    result.remainingHealth !==
+      null &&
+    result.remainingHealth !==
+      undefined
+      ? (
+          ` / 잔여 체력 ` +
+          `${result.remainingHealth}`
+        )
       : "";
 
   return (
@@ -260,7 +455,9 @@ function formatShotResult(result) {
 
 function getLoadingMessage(result) {
   if (result.usedLoadedRound) {
-    return "사격명령 하달. 포탑 선회와 조준을 시작합니다.";
+    return (
+      "사격명령 하달. 포탑 선회와 조준을 시작합니다."
+    );
   }
 
   if (
@@ -268,15 +465,19 @@ function getLoadingMessage(result) {
     !result.automaticLoading
   ) {
     return (
-      `사격명령 하달. ` +
-      `${getAmmunitionLabel(result.ammunition)} 장전을 계속합니다.`
+      "사격명령 하달. " +
+      `${getAmmunitionLabel(
+        result.ammunition,
+      )} 장전을 계속합니다.`
     );
   }
 
   if (result.automaticLoading) {
     return (
-      `사격명령 하달. ` +
-      `${getAmmunitionLabel(result.ammunition)} 자동 장전을 시작합니다.`
+      "사격명령 하달. " +
+      `${getAmmunitionLabel(
+        result.ammunition,
+      )} 자동 장전을 시작합니다.`
     );
   }
 
@@ -298,12 +499,14 @@ export function createFirePanel({
   const procedure = {
     ammunition:
       AMMUNITION_TYPES.APFSDS,
+
     targetHex: null,
     targetUnitId: null,
   };
 
   function synchronizeProcedure(unit) {
-    const fireControl = unit.fireControl;
+    const fireControl =
+      unit.fireControl;
 
     procedure.ammunition =
       fireControl?.ammunition ??
@@ -322,21 +525,27 @@ export function createFirePanel({
   }
 
   function reset() {
-    const unit = getSelectedUnit();
+    const unit =
+      getSelectedUnit();
 
     procedure.ammunition =
-      unit?.fireControl?.ammunition ??
+      unit?.fireControl
+        ?.ammunition ??
       AMMUNITION_TYPES.APFSDS;
 
-    procedure.targetHex = null;
-    procedure.targetUnitId = null;
+    procedure.targetHex =
+      null;
+
+    procedure.targetUnitId =
+      null;
   }
 
   function setTarget(
     targetHex,
     targetUnitId = null,
   ) {
-    const unit = getSelectedUnit();
+    const unit =
+      getSelectedUnit();
 
     if (
       !unit ||
@@ -346,22 +555,30 @@ export function createFirePanel({
       return false;
     }
 
-    const success = setFireTarget(
-      unit,
-      {
-        column: targetHex.column,
-        row: targetHex.row,
-        unitId: targetUnitId,
-      },
-      null,
-      getTurn(),
-    );
+    const success =
+      setFireTarget(
+        unit,
+        {
+          column:
+            targetHex.column,
+
+          row:
+            targetHex.row,
+
+          unitId:
+            targetUnitId,
+        },
+        null,
+        getTurn(),
+      );
 
     if (!success) {
       return false;
     }
 
-    synchronizeProcedure(unit);
+    synchronizeProcedure(
+      unit,
+    );
 
     onStateChanged();
 
@@ -383,7 +600,8 @@ export function createFirePanel({
 
     const firedAmmunition =
       result.ammunition ??
-      result.shotResult?.ammunition ??
+      result.shotResult
+        ?.ammunition ??
       null;
 
     if (
@@ -399,9 +617,10 @@ export function createFirePanel({
 
     onStateChanged();
 
-    const resultMessage = formatShotResult(
-      result.shotResult,
-    );
+    const resultMessage =
+      formatShotResult(
+        result.shotResult,
+      );
 
     if (result.reloadStarted) {
       onMessage(
@@ -411,25 +630,33 @@ export function createFirePanel({
         )} 재장전 중`,
       );
     } else {
-      onMessage(resultMessage);
+      onMessage(
+        resultMessage,
+      );
     }
 
     render();
   }
 
-  function renderUnavailable(message) {
+  function renderUnavailable(
+    message,
+  ) {
     container.replaceChildren();
 
     const paragraph =
       document.createElement("p");
 
-    paragraph.textContent = message;
+    paragraph.textContent =
+      message;
 
-    container.append(paragraph);
+    container.append(
+      paragraph,
+    );
   }
 
   function render() {
-    const unit = getSelectedUnit();
+    const unit =
+      getSelectedUnit();
 
     if (
       !unit ||
@@ -451,7 +678,9 @@ export function createFirePanel({
       return;
     }
 
-    synchronizeProcedure(unit);
+    synchronizeProcedure(
+      unit,
+    );
 
     const fireControl =
       unit.fireControl;
@@ -460,7 +689,9 @@ export function createFirePanel({
       fireControl.procedureState;
 
     const canIssueFireCommand =
-      Boolean(fireControl.targetHex) &&
+      Boolean(
+        fireControl.targetHex,
+      ) &&
       (
         procedureState ===
           FIRE_PROCEDURE_STATES
@@ -477,7 +708,11 @@ export function createFirePanel({
       "fire-procedure";
 
     wrapper.append(
-      createStatusPanel(unit),
+      createStatusPanel(
+        unit,
+        getRuntimeScenario?.() ??
+          null,
+      ),
       createProcedureProgress(
         procedureState,
       ),
@@ -501,7 +736,8 @@ export function createFirePanel({
             label,
             {
               active:
-                fireControl.ammunition ===
+                fireControl
+                  .ammunition ===
                 ammunition,
 
               onClick: () => {
@@ -519,22 +755,30 @@ export function createFirePanel({
                   return;
                 }
 
-                synchronizeProcedure(unit);
+                synchronizeProcedure(
+                  unit,
+                );
 
                 onStateChanged();
 
-                if (fireControl.loading) {
+                if (
+                  fireControl.loading
+                ) {
                   onMessage(
                     `다음 장전탄을 ${label}(으)로 변경했습니다. ` +
                     `현재 장전 중인 ${getAmmunitionLabel(
-                      fireControl.loadingAmmunition,
+                      fireControl
+                        .loadingAmmunition,
                     )}은 유지됩니다.`,
                   );
-                } else if (fireControl.loaded) {
+                } else if (
+                  fireControl.loaded
+                ) {
                   onMessage(
                     `다음 장전탄을 ${label}(으)로 변경했습니다. ` +
                     `현재 장전된 ${getAmmunitionLabel(
-                      fireControl.loadedAmmunition,
+                      fireControl
+                        .loadedAmmunition,
                     )}은 유지됩니다.`,
                   );
                 } else {
@@ -551,7 +795,9 @@ export function createFirePanel({
       },
     );
 
-    wrapper.append(ammunitionGroup);
+    wrapper.append(
+      ammunitionGroup,
+    );
 
     const targetStatus =
       document.createElement("div");
@@ -567,7 +813,9 @@ export function createFirePanel({
           )
         : "목표: 미지정";
 
-    wrapper.append(targetStatus);
+    wrapper.append(
+      targetStatus,
+    );
 
     wrapper.append(
       createButton(
@@ -613,7 +861,9 @@ export function createFirePanel({
               );
 
             if (!result.success) {
-              onMessage(result.reason);
+              onMessage(
+                result.reason,
+              );
 
               return;
             }
@@ -621,7 +871,9 @@ export function createFirePanel({
             onStateChanged();
 
             onMessage(
-              getLoadingMessage(result),
+              getLoadingMessage(
+                result,
+              ),
             );
 
             render();
@@ -635,22 +887,26 @@ export function createFirePanel({
         fireControl.loading
           ? (
               `장전 중: ${getAmmunitionLabel(
-                fireControl.loadingAmmunition,
+                fireControl
+                  .loadingAmmunition,
               )}`
             )
           : fireControl.loaded
             ? (
                 `장전 완료: ${getAmmunitionLabel(
-                  fireControl.loadedAmmunition,
+                  fireControl
+                    .loadedAmmunition,
                 )}`
               )
             : "자동 장전 대기",
         {
           current:
             procedureState ===
-              FIRE_PROCEDURE_STATES.LOADING ||
+              FIRE_PROCEDURE_STATES
+                .LOADING ||
             procedureState ===
-              FIRE_PROCEDURE_STATES.RELOADING,
+              FIRE_PROCEDURE_STATES
+                .RELOADING,
 
           disabled: true,
         },
@@ -669,7 +925,6 @@ export function createFirePanel({
           disabled: true,
         },
       ),
-
       createButton(
         "조준",
         {
@@ -681,7 +936,6 @@ export function createFirePanel({
           disabled: true,
         },
       ),
-
       createButton(
         "발사 준비",
         {
@@ -712,12 +966,16 @@ export function createFirePanel({
                 getTurn(),
                 {
                   moving:
-                    isUnitMoving(unit),
+                    isUnitMoving(
+                      unit,
+                    ),
                 },
               );
 
             if (!result.success) {
-              onMessage(result.reason);
+              onMessage(
+                result.reason,
+              );
 
               return;
             }
@@ -752,12 +1010,16 @@ export function createFirePanel({
                 getTurn(),
                 {
                   moving:
-                    isUnitMoving(unit),
+                    isUnitMoving(
+                      unit,
+                    ),
                 },
               );
 
             if (!result.success) {
-              onMessage(result.reason);
+              onMessage(
+                result.reason,
+              );
 
               return;
             }
@@ -783,7 +1045,8 @@ export function createFirePanel({
             fireControl.state ===
               FIRE_STATES.STOPPED &&
             !fireControl.targetHex &&
-            !fireControl.gunnerAutonomous,
+            !fireControl
+              .gunnerAutonomous,
 
           onClick: () => {
             ceaseFire(unit);
@@ -800,13 +1063,15 @@ export function createFirePanel({
               fireControl.loading
                 ? (
                     ` ${getAmmunitionLabel(
-                      fireControl.loadingAmmunition,
+                      fireControl
+                        .loadingAmmunition,
                     )} 장전은 계속됩니다.`
                   )
                 : fireControl.loaded
                   ? (
                       ` 현재 장전탄 ${getAmmunitionLabel(
-                        fireControl.loadedAmmunition,
+                        fireControl
+                          .loadedAmmunition,
                       )}은 유지됩니다.`
                     )
                   : "";
@@ -821,7 +1086,9 @@ export function createFirePanel({
       ),
     );
 
-    if (fireControl.lastShotResult) {
+    if (
+      fireControl.lastShotResult
+    ) {
       const resultPanel =
         document.createElement("div");
 
@@ -830,13 +1097,18 @@ export function createFirePanel({
 
       resultPanel.textContent =
         formatShotResult(
-          fireControl.lastShotResult,
+          fireControl
+            .lastShotResult,
         );
 
-      wrapper.append(resultPanel);
+      wrapper.append(
+        resultPanel,
+      );
     }
 
-    container.append(wrapper);
+    container.append(
+      wrapper,
+    );
   }
 
   return {
