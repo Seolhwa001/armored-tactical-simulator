@@ -2,14 +2,19 @@
 // ATS PROJECT
 // File      : src/engine/actions.js
 // Sprint    : 3.9.1
-// Revision  : R4
+// Revision  : R5
 // Build     : 2026-08-05
-// Type      : FULL REPLACEMENT
-// Purpose   : Crew actions, CPS tracking, and shared hex targeting
+// Type      : PATCHED FULL REPLACEMENT
+// Purpose   : Crew actions using shared geometry and angle utilities
 // ============================================================
 
-import { UNIT_ACTIONS } from "./constants/actionConstants.js";
-import { createIdleAction } from "./factories/actionFactory.js";
+import {
+  UNIT_ACTIONS,
+} from "./constants/actionConstants.js";
+
+import {
+  createIdleAction,
+} from "./factories/actionFactory.js";
 
 import {
   CREW_ROLES,
@@ -18,12 +23,16 @@ import {
 
 import {
   DETECTION_STAGES,
-  getHexDistance,
 } from "./detection.js";
 
 import {
   getHexDirection,
+  getHexDistance,
 } from "./hexGeometry.js";
+
+import {
+  normalizeAngle,
+} from "./mathUtils.js";
 
 import {
   isTurretAligned,
@@ -32,23 +41,39 @@ import {
   updateTurretRotation,
 } from "./turretControl.js";
 
-export { UNIT_ACTIONS };
+export {
+  UNIT_ACTIONS,
+};
 
-const FIRE_STATES = Object.freeze({
-  ADJUST: "adjust",
-});
+const FIRE_STATES =
+  Object.freeze({
+    ADJUST:
+      "adjust",
+  });
 
-const FIRE_PROCEDURE_STATES = Object.freeze({
-  READY_TO_FIRE: "ready-to-fire",
-  FIRED: "fired",
-  ADJUSTING: "adjusting",
-});
+const FIRE_PROCEDURE_STATES =
+  Object.freeze({
+    READY_TO_FIRE:
+      "ready-to-fire",
 
-const LOADER_OBSERVATION_MODES = Object.freeze({
-  OPEN_HATCH: "open-hatch",
-  PERISCOPE: "periscope",
-  LOADING: "loading",
-});
+    FIRED:
+      "fired",
+
+    ADJUSTING:
+      "adjusting",
+  });
+
+const LOADER_OBSERVATION_MODES =
+  Object.freeze({
+    OPEN_HATCH:
+      "open-hatch",
+
+    PERISCOPE:
+      "periscope",
+
+    LOADING:
+      "loading",
+  });
 
 const LOADER_SIDE_OFFSET =
   Math.PI / 2;
@@ -61,19 +86,22 @@ const ANGLE_ALIGNMENT_TOLERANCE =
 
 const LOADER_OBSERVATION_FACTORS =
   Object.freeze({
-    [LOADER_OBSERVATION_MODES.OPEN_HATCH]: {
+    [LOADER_OBSERVATION_MODES
+      .OPEN_HATCH]: {
       fieldOfView: 1,
       range: 1,
       identification: 1,
     },
 
-    [LOADER_OBSERVATION_MODES.PERISCOPE]: {
+    [LOADER_OBSERVATION_MODES
+      .PERISCOPE]: {
       fieldOfView: 0.42,
       range: 0.4,
       identification: 0.35,
     },
 
-    [LOADER_OBSERVATION_MODES.LOADING]: {
+    [LOADER_OBSERVATION_MODES
+      .LOADING]: {
       fieldOfView: 0.22,
       range: 0.16,
       identification: 0.12,
@@ -115,29 +143,19 @@ function positiveOrDefault(
   );
 }
 
-function normalizeAngle(angle) {
-  let normalized =
-    finiteOrDefault(angle, 0) %
-    (Math.PI * 2);
-
-  if (normalized > Math.PI) {
-    normalized -= Math.PI * 2;
-  }
-
-  if (normalized < -Math.PI) {
-    normalized += Math.PI * 2;
-  }
-
-  return normalized;
-}
-
 function getAngleDifference(
   first,
   second,
 ) {
   return normalizeAngle(
-    finiteOrDefault(first, 0) -
-    finiteOrDefault(second, 0),
+    finiteOrDefault(
+      first,
+      0,
+    ) -
+    finiteOrDefault(
+      second,
+      0,
+    ),
   );
 }
 
@@ -162,10 +180,14 @@ function rotateToward(
   maximumStep,
 ) {
   const safeCurrent =
-    normalizeAngle(current);
+    normalizeAngle(
+      current,
+    );
 
   const safeTarget =
-    normalizeAngle(target);
+    normalizeAngle(
+      target,
+    );
 
   const difference =
     getAngleDifference(
@@ -175,7 +197,9 @@ function rotateToward(
 
   const step =
     Math.min(
-      Math.abs(difference),
+      Math.abs(
+        difference,
+      ),
       nonNegativeOrDefault(
         maximumStep,
         0,
@@ -188,8 +212,10 @@ function rotateToward(
 
   return normalizeAngle(
     safeCurrent +
-    Math.sign(difference) *
-      step,
+    Math.sign(
+      difference,
+    ) *
+    step,
   );
 }
 
@@ -208,7 +234,8 @@ function isTurretTrackingAction(
 ) {
   return (
     actionType ===
-      UNIT_ACTIONS.RECON_BY_FIRE ||
+      UNIT_ACTIONS
+        .RECON_BY_FIRE ||
     actionType ===
       UNIT_ACTIONS.FIRE
   );
@@ -266,7 +293,8 @@ function ensureObserverBasePerformance(
     nonNegativeOrDefault(
       observer
         .baseIdentificationFactor ??
-        observer.identificationFactor,
+        observer
+          .identificationFactor,
       1,
     );
 
@@ -299,7 +327,8 @@ function ensureObserverBasePerformance(
 
   if (
     !Number.isFinite(
-      observer.identificationFactor,
+      observer
+        .identificationFactor,
     )
   ) {
     observer.identificationFactor =
@@ -327,7 +356,8 @@ function restoreObserverBasePerformance(
     observer.baseRange;
 
   observer.identificationFactor =
-    observer.baseIdentificationFactor;
+    observer
+      .baseIdentificationFactor;
 }
 
 function applyObserverPerformance(
@@ -357,14 +387,17 @@ function applyObserverPerformance(
     );
 
   observer.identificationFactor =
-    observer.baseIdentificationFactor *
+    observer
+      .baseIdentificationFactor *
     nonNegativeOrDefault(
       factors?.identification,
       1,
     );
 }
 
-function clearHunterKillerState(unit) {
+function clearHunterKillerState(
+  unit,
+) {
   const hunterKiller =
     getHunterKiller(unit);
 
@@ -373,7 +406,8 @@ function clearHunterKillerState(unit) {
   }
 
   hunterKiller.state =
-    HUNTER_KILLER_STATES.SEARCHING;
+    HUNTER_KILLER_STATES
+      .SEARCHING;
 
   hunterKiller.detectedTargetUnitId =
     null;
@@ -385,7 +419,9 @@ function clearHunterKillerState(unit) {
     null;
 }
 
-function deactivateCommanderVisual(unit) {
+function deactivateCommanderVisual(
+  unit,
+) {
   const commander =
     getCrewObserver(
       unit,
@@ -398,7 +434,9 @@ function deactivateCommanderVisual(unit) {
   }
 }
 
-function deactivateCommanderSight(unit) {
+function deactivateCommanderSight(
+  unit,
+) {
   const sight =
     getCommanderSight(unit);
 
@@ -416,7 +454,9 @@ function deactivateCommanderSight(unit) {
       null;
   }
 
-  clearHunterKillerState(unit);
+  clearHunterKillerState(
+    unit,
+  );
 }
 
 function activateCommanderVisual(
@@ -432,7 +472,9 @@ function activateCommanderVisual(
 
   if (
     !commander ||
-    !Number.isFinite(direction)
+    !Number.isFinite(
+      direction,
+    )
   ) {
     return false;
   }
@@ -442,7 +484,9 @@ function activateCommanderVisual(
   );
 
   commander.direction =
-    normalizeAngle(direction);
+    normalizeAngle(
+      direction,
+    );
 
   commander.targetDirection =
     commander.direction;
@@ -453,43 +497,57 @@ function activateCommanderVisual(
   commander.lastUpdatedTurn =
     turn;
 
-  deactivateCommanderSight(unit);
+  deactivateCommanderSight(
+    unit,
+  );
 
   return true;
 }
 
-function isLoaderHatchOpen(unit) {
+function isLoaderHatchOpen(
+  unit,
+) {
   return (
-    unit.hatchState === "open"
+    unit.hatchState ===
+    "open"
   );
 }
 
-function isLoaderBusy(unit) {
+function isLoaderBusy(
+  unit,
+) {
   return (
     unit.fireControl?.loading ===
-      true
+    true
   );
 }
 
-function getLoaderObservationMode(unit) {
+function getLoaderObservationMode(
+  unit,
+) {
   if (isLoaderBusy(unit)) {
     return (
-      LOADER_OBSERVATION_MODES.LOADING
+      LOADER_OBSERVATION_MODES
+        .LOADING
     );
   }
 
   if (isLoaderHatchOpen(unit)) {
     return (
-      LOADER_OBSERVATION_MODES.OPEN_HATCH
+      LOADER_OBSERVATION_MODES
+        .OPEN_HATCH
     );
   }
 
   return (
-    LOADER_OBSERVATION_MODES.PERISCOPE
+    LOADER_OBSERVATION_MODES
+      .PERISCOPE
   );
 }
 
-function getLoaderPeriscopeDirection(unit) {
+function getLoaderPeriscopeDirection(
+  unit,
+) {
   const turretDirection =
     finiteOrDefault(
       unit.turretDirection ??
@@ -518,7 +576,9 @@ function updateLoaderObservation(
   }
 
   const mode =
-    getLoaderObservationMode(unit);
+    getLoaderObservationMode(
+      unit,
+    );
 
   loader.observationMode =
     mode;
@@ -532,7 +592,8 @@ function updateLoaderObservation(
 
   if (
     mode ===
-      LOADER_OBSERVATION_MODES.OPEN_HATCH &&
+      LOADER_OBSERVATION_MODES
+        .OPEN_HATCH &&
     Number.isFinite(
       loader.assignedDirection,
     )
@@ -637,18 +698,22 @@ export function canAssignCrewObservation(
 
   if (
     crewRole ===
-      CREW_ROLES.COMMANDER
+    CREW_ROLES.COMMANDER
   ) {
     return true;
   }
 
   if (
     crewRole ===
-      CREW_ROLES.LOADER
+    CREW_ROLES.LOADER
   ) {
     return (
-      isLoaderHatchOpen(unit) &&
-      !isLoaderBusy(unit)
+      isLoaderHatchOpen(
+        unit,
+      ) &&
+      !isLoaderBusy(
+        unit,
+      )
     );
   }
 
@@ -770,10 +835,12 @@ export function setPersistentAction(
       action.targetHex
         ? {
             column:
-              action.targetHex.column,
+              action.targetHex
+                .column,
 
             row:
-              action.targetHex.row,
+              action.targetHex
+                .row,
           }
         : null,
 
@@ -795,7 +862,8 @@ export function setPersistentAction(
     startedTurn:
       turn,
 
-    persistent: true,
+    persistent:
+      true,
   };
 
   unit.command =
@@ -811,7 +879,9 @@ export function setPersistentAction(
       unit.action.direction,
     )
   ) {
-    unlockTurretFromHull(unit);
+    unlockTurretFromHull(
+      unit,
+    );
 
     setTurretTargetDirection(
       unit,
@@ -822,12 +892,15 @@ export function setPersistentAction(
   return unit.action;
 }
 
-export function clearPersistentAction(unit) {
+export function clearPersistentAction(
+  unit,
+) {
   unit.action =
     createIdleAction();
 
   if (!unit.destroyed) {
-    unit.command = "대기";
+    unit.command =
+      "대기";
   }
 }
 
@@ -870,13 +943,17 @@ export function setCrewObservationDirection(
     return true;
   }
 
-  if (!Number.isFinite(direction)) {
+  if (
+    !Number.isFinite(
+      direction,
+    )
+  ) {
     return false;
   }
 
   if (
     crewRole ===
-      CREW_ROLES.COMMANDER
+    CREW_ROLES.COMMANDER
   ) {
     const success =
       activateCommanderVisual(
@@ -897,7 +974,7 @@ export function setCrewObservationDirection(
 
   if (
     crewRole ===
-      CREW_ROLES.LOADER
+    CREW_ROLES.LOADER
   ) {
     if (
       !canAssignCrewObservation(
@@ -913,7 +990,9 @@ export function setCrewObservationDirection(
     );
 
     observer.assignedDirection =
-      normalizeAngle(direction);
+      normalizeAngle(
+        direction,
+      );
 
     observer.direction =
       observer.assignedDirection;
@@ -925,7 +1004,8 @@ export function setCrewObservationDirection(
       true;
 
     observer.observationMode =
-      LOADER_OBSERVATION_MODES.OPEN_HATCH;
+      LOADER_OBSERVATION_MODES
+        .OPEN_HATCH;
 
     observer.lastUpdatedTurn =
       turn;
@@ -944,24 +1024,35 @@ export function setCommanderSightDirection(
   direction,
 ) {
   const sight =
-    getCommanderSight(unit);
+    getCommanderSight(
+      unit,
+    );
 
   if (
     unit.destroyed ||
     !sight?.operational ||
-    !Number.isFinite(direction)
+    !Number.isFinite(
+      direction,
+    )
   ) {
     return false;
   }
 
-  deactivateCommanderVisual(unit);
-  clearHunterKillerState(unit);
+  deactivateCommanderVisual(
+    unit,
+  );
+
+  clearHunterKillerState(
+    unit,
+  );
 
   sight.active =
     true;
 
   sight.targetDirection =
-    normalizeAngle(direction);
+    normalizeAngle(
+      direction,
+    );
 
   sight.targetUnitId =
     null;
@@ -980,12 +1071,17 @@ function isCommanderSightTarget(
   targetUnit,
 ) {
   const sight =
-    getCommanderSight(unit);
+    getCommanderSight(
+      unit,
+    );
 
   return (
-    sight?.operational === true &&
-    sight.active === true &&
-    sight.tracking === true &&
+    sight?.operational ===
+      true &&
+    sight.active ===
+      true &&
+    sight.tracking ===
+      true &&
     sight.targetUnitId ===
       targetUnit.id
   );
@@ -998,7 +1094,8 @@ function isCommanderSightDetection(
   return (
     targetUnit.detectedByUnitId ===
       unit.id &&
-    targetUnit.detectedByCrewRole ===
+    targetUnit
+      .detectedByCrewRole ===
       "commander-cps"
   );
 }
@@ -1010,7 +1107,8 @@ function canDesignateHunterKillerTarget(
   if (
     !targetUnit ||
     targetUnit.destroyed ||
-    targetUnit.side !== "enemy"
+    targetUnit.side !==
+      "enemy"
   ) {
     return false;
   }
@@ -1071,7 +1169,9 @@ export function designateHunterKillerTarget(
       ),
     );
 
-  deactivateCommanderVisual(unit);
+  deactivateCommanderVisual(
+    unit,
+  );
 
   sight.active =
     true;
@@ -1089,7 +1189,8 @@ export function designateHunterKillerTarget(
     true;
 
   hunterKiller.state =
-    hunterKillerStates.DESIGNATING;
+    hunterKillerStates
+      .DESIGNATING;
 
   hunterKiller.detectedTargetUnitId =
     targetUnit.id;
@@ -1100,7 +1201,9 @@ export function designateHunterKillerTarget(
   hunterKiller.handedOffTargetUnitId =
     null;
 
-  unlockTurretFromHull(unit);
+  unlockTurretFromHull(
+    unit,
+  );
 
   setTurretTargetDirection(
     unit,
@@ -1115,7 +1218,8 @@ function clearHunterKillerTarget(
   sight,
 ) {
   hunterKiller.state =
-    HUNTER_KILLER_STATES.SEARCHING;
+    HUNTER_KILLER_STATES
+      .SEARCHING;
 
   hunterKiller.detectedTargetUnitId =
     null;
@@ -1147,10 +1251,14 @@ function updateHunterKillerTargeting(
   hunterKillerStates,
 ) {
   const hunterKiller =
-    getHunterKiller(unit);
+    getHunterKiller(
+      unit,
+    );
 
   const sight =
-    getCommanderSight(unit);
+    getCommanderSight(
+      unit,
+    );
 
   if (
     unit.destroyed ||
@@ -1196,7 +1304,9 @@ function updateHunterKillerTargeting(
       ),
     );
 
-  deactivateCommanderVisual(unit);
+  deactivateCommanderVisual(
+    unit,
+  );
 
   if (sight) {
     const targetChanged =
@@ -1223,7 +1333,9 @@ function updateHunterKillerTargeting(
     }
   }
 
-  unlockTurretFromHull(unit);
+  unlockTurretFromHull(
+    unit,
+  );
 
   setTurretTargetDirection(
     unit,
@@ -1257,11 +1369,14 @@ function processHunterKillerHandoff(
 
   if (
     hunterKiller.state ===
-      states.DESIGNATING
+    states.DESIGNATING
   ) {
     if (
-      sight?.locked !== true ||
-      !isTurretAligned(unit)
+      sight?.locked !==
+        true ||
+      !isTurretAligned(
+        unit,
+      )
     ) {
       return;
     }
@@ -1289,7 +1404,7 @@ function processHunterKillerHandoff(
 
   if (
     hunterKiller.state ===
-      states.HANDOFF
+    states.HANDOFF
   ) {
     hunterKiller.state =
       states.TRACKING;
@@ -1316,11 +1431,14 @@ export function applyReconByFire(
     attacker,
     {
       type:
-        UNIT_ACTIONS.RECON_BY_FIRE,
+        UNIT_ACTIONS
+          .RECON_BY_FIRE,
 
       targetHex,
       direction,
-      label: "화력수색",
+
+      label:
+        "화력수색",
     },
     turn,
   );
@@ -1328,7 +1446,8 @@ export function applyReconByFire(
   const affectedEnemies =
     runtimeScenario.units.filter(
       (enemy) =>
-        enemy.side === "enemy" &&
+        enemy.side ===
+          "enemy" &&
         !enemy.destroyed &&
         getHexDistance(
           enemy,
@@ -1341,12 +1460,14 @@ export function applyReconByFire(
       const exposure =
         25 +
         Math.floor(
-          Math.random() * 31,
+          Math.random() *
+          31,
         );
 
       enemy.temporaryExposure =
         Math.max(
-          enemy.temporaryExposure ??
+          enemy
+            .temporaryExposure ??
             0,
           exposure,
         );
@@ -1362,7 +1483,7 @@ export function applyReconByFire(
         Math.min(
           0.9,
           0.3 +
-            exposure / 100,
+          exposure / 100,
         );
 
       if (
@@ -1371,8 +1492,11 @@ export function applyReconByFire(
       ) {
         enemy.detectionStage =
           Math.max(
-            enemy.detectionStage,
-            DETECTION_STAGES.CONTACT,
+            enemy.detectionStage ??
+              DETECTION_STAGES
+                .HIDDEN,
+            DETECTION_STAGES
+              .CONTACT,
           );
 
         enemy.visible =
@@ -1399,7 +1523,8 @@ function updateReconByFireAction(
 ) {
   if (
     unit.action?.type !==
-      UNIT_ACTIONS.RECON_BY_FIRE ||
+      UNIT_ACTIONS
+        .RECON_BY_FIRE ||
     !unit.action.targetHex
   ) {
     return;
@@ -1449,7 +1574,8 @@ function updateAdjustedFireAction(
   const direction =
     getDirectionBetween(
       unit,
-      unit.fireControl.targetHex,
+      unit.fireControl
+        .targetHex,
     );
 
   setTurretTargetDirection(
@@ -1458,13 +1584,16 @@ function updateAdjustedFireAction(
   );
 
   const procedureState =
-    unit.fireControl.procedureState;
+    unit.fireControl
+      .procedureState;
 
   if (
     procedureState ===
-      FIRE_PROCEDURE_STATES.ADJUSTING ||
+      FIRE_PROCEDURE_STATES
+        .ADJUSTING ||
     procedureState ===
-      FIRE_PROCEDURE_STATES.FIRED
+      FIRE_PROCEDURE_STATES
+        .FIRED
   ) {
     beginReloading?.(
       unit,
@@ -1476,7 +1605,8 @@ function updateAdjustedFireAction(
 
   if (
     procedureState !==
-      FIRE_PROCEDURE_STATES.READY_TO_FIRE
+    FIRE_PROCEDURE_STATES
+      .READY_TO_FIRE
   ) {
     return null;
   }
@@ -1533,81 +1663,85 @@ export function processPersistentActions(
       options.acceptHunterKillerTarget,
   };
 
-  const adjustedShots = [];
+  const adjustedShots =
+    [];
 
   runtimeScenario.units
     .filter(
       (unit) =>
-        unit.side === "friendly" &&
+        unit.side ===
+          "friendly" &&
         !unit.destroyed,
     )
-    .forEach((unit) => {
-      const moving =
-        movingUnitIds.has(
-          unit.id,
-        );
+    .forEach(
+      (unit) => {
+        const moving =
+          movingUnitIds.has(
+            unit.id,
+          );
 
-      updateReconByFireAction(
-        runtimeScenario,
-        unit,
-        turn,
-      );
-
-      const hunterKillerContext =
-        updateHunterKillerTargeting(
-          unit,
+        updateReconByFireAction(
           runtimeScenario,
-          hunterKillerStates,
-        );
-
-      updateTurretRotation(
-        unit,
-        {
-          moving,
-        },
-      );
-
-      fireControlFunctions
-        .updateFireProcedure?.(
           unit,
           turn,
         );
 
-      synchronizeCrewObservationDirections(
-        unit,
-        turn,
-      );
+        const hunterKillerContext =
+          updateHunterKillerTargeting(
+            unit,
+            runtimeScenario,
+            hunterKillerStates,
+          );
 
-      updateCommanderSightRotation(
-        unit,
-        turn,
-      );
+        updateTurretRotation(
+          unit,
+          {
+            moving,
+          },
+        );
 
-      processHunterKillerHandoff(
-        unit,
-        turn,
-        hunterKillerContext,
         fireControlFunctions
-          .acceptHunterKillerTarget,
-      );
+          .updateFireProcedure?.(
+            unit,
+            turn,
+          );
 
-      const adjustedShot =
-        updateAdjustedFireAction(
-          runtimeScenario,
+        synchronizeCrewObservationDirections(
           unit,
           turn,
-          moving,
-          fireControlFunctions,
         );
 
-      if (adjustedShot) {
-        adjustedShots.push(
-          adjustedShot,
+        updateCommanderSightRotation(
+          unit,
+          turn,
         );
-      }
-    });
+
+        processHunterKillerHandoff(
+          unit,
+          turn,
+          hunterKillerContext,
+          fireControlFunctions
+            .acceptHunterKillerTarget,
+        );
+
+        const adjustedShot =
+          updateAdjustedFireAction(
+            runtimeScenario,
+            unit,
+            turn,
+            moving,
+            fireControlFunctions,
+          );
+
+        if (adjustedShot) {
+          adjustedShots.push(
+            adjustedShot,
+          );
+        }
+      },
+    );
 
   return {
     adjustedShots,
   };
-      }
+}
