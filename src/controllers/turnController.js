@@ -1,11 +1,11 @@
 // ============================================================
 // ATS PROJECT
 // File      : src/controllers/turnController.js
-// Sprint    : 3.9.1
-// Revision  : R3
+// Sprint    : 3.9.x
+// Revision  : R4
 // Build     : 2026-08-05
-// Type      : FULL REPLACEMENT
-// Purpose   : Turn execution and persistent-action processing
+// Type      : PATCHED FULL REPLACEMENT
+// Purpose   : Turn execution with hull-turn movement classification
 // ============================================================
 
 import {
@@ -182,7 +182,13 @@ export function createTurnController({
             },
           });
 
-        if (result.moved) {
+        // 이동뿐 아니라 제자리 선회·이동 중 선회도
+        // 기동 상태로 분류하여 기존 사격·감시 페널티가
+        // 동일한 처리 주기에서 적용되도록 한다.
+        if (
+          result.moved ||
+          result.turned
+        ) {
           movingUnitIds.add(
             unit.id,
           );
@@ -227,7 +233,6 @@ export function createTurnController({
           : [],
     };
   }
-
 
   function addDirectedActionFeedback(
     completedAction,
