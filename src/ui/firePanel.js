@@ -1,11 +1,11 @@
 // ============================================================
 // ATS PROJECT
 // File      : src/ui/firePanel.js
-// Sprint    : 3.9.1
-// Revision  : R7
+// Sprint    : 3.9.2
+// Revision  : R8
 // Build     : 2026-08-05
 // Type      : PARTIAL PATCH
-// Purpose   : Fire UI with immediate target-selection feedback
+// Purpose   : Fire UI with recon-by-fire targeting and mobile status fields
 // ============================================================
 
 import {
@@ -19,6 +19,14 @@ import {
   selectAmmunition,
   setFireTarget,
 } from "../engine/fireControl.js";
+
+import {
+  DIRECTED_ACTION_STATES,
+} from "../engine/actions.js";
+
+import {
+  UNIT_ACTIONS,
+} from "../engine/constants/actionConstants.js";
 
 import {
   HUNTER_KILLER_STATES,
@@ -113,16 +121,27 @@ function createButton(
 
 function createStatusRow(label, value) {
   const row =
+    document.createElement("div");
+
+  const labelElement =
     document.createElement("span");
 
-  const strong =
+  const valueElement =
     document.createElement("strong");
 
-  row.append(`${label}: `);
+  row.className = "status-field";
+  labelElement.className =
+    "status-field__label";
+  valueElement.className =
+    "status-field__value";
 
-  strong.textContent = value;
+  labelElement.textContent = label;
+  valueElement.textContent = value;
 
-  row.append(strong);
+  row.append(
+    labelElement,
+    valueElement,
+  );
 
   return row;
 }
@@ -278,6 +297,10 @@ function createStatusPanel(
       fireControl.ammunition,
     );
 
+  const directedStatus =
+    fireControl.directedActionStatus ??
+    null;
+
   panel.append(
     createStatusRow(
       "절차",
@@ -328,6 +351,47 @@ function createStatusPanel(
       ),
     ),
   );
+
+  if (directedStatus) {
+    panel.append(
+      createStatusRow(
+        "실행 수단",
+        directedStatus.executionMethod ??
+          "없음",
+      ),
+      createStatusRow(
+        "요청 자원",
+        getAmmunitionLabel(
+          directedStatus
+            .requestedResourceType,
+        ),
+      ),
+      createStatusRow(
+        "사용 가능 자원",
+        getAmmunitionLabel(
+          directedStatus
+            .availableResourceType,
+        ),
+      ),
+      createStatusRow(
+        "자원 사용 가능",
+        directedStatus.resourceAvailable
+          ? "가능"
+          : "불가",
+      ),
+      createStatusRow(
+        "장전 상태",
+        directedStatus.loadedState
+          ? "완료"
+          : "미장전",
+      ),
+      createStatusRow(
+        "실패 이유",
+        directedStatus.failureReason ??
+          "없음",
+      ),
+    );
+  }
 
   if (turretStatus?.warning) {
     const warning =
@@ -491,6 +555,7 @@ export function createFirePanel({
   getTurn,
   isUnitMoving,
   onBeginTargetSelection,
+  onBeginReconByFireSelection,
   onFireEffect,
   onRemoveFireEffects,
   onStateChanged,
@@ -503,9 +568,6 @@ export function createFirePanel({
     targetHex: null,
     targetUnitId: null,
   };
-
-  let targetSelectionActive =
-    false;
 
   function synchronizeProcedure(unit) {
     const fireControl =
@@ -541,9 +603,6 @@ export function createFirePanel({
 
     procedure.targetUnitId =
       null;
-
-    targetSelectionActive =
-      false;
   }
 
   function setTarget(
@@ -585,9 +644,6 @@ export function createFirePanel({
     synchronizeProcedure(
       unit,
     );
-
-    targetSelectionActive =
-      false;
 
     onStateChanged();
 
@@ -647,13 +703,6 @@ export function createFirePanel({
     render();
   }
 
-  function setTargetSelectionActive(
-    active,
-  ) {
-    targetSelectionActive =
-      active === true;
-  }
-
   function renderUnavailable(
     message,
   ) {
@@ -668,6 +717,41 @@ export function createFirePanel({
     container.append(
       paragraph,
     );
+  }
+
+  function getReconByFireLabel(unit) {
+    if (
+      unit.action?.type !==
+      UNIT_ACTIONS.RECON_BY_FIRE
+    ) {
+      return "화력수색";
+    }
+
+    const state =
+      unit.action.internalState;
+
+    if (
+      state ===
+      DIRECTED_ACTION_STATES.ALIGNING
+    ) {
+      return "화력수색 · 방향 정렬 중";
+    }
+
+    if (
+      state ===
+      DIRECTED_ACTION_STATES.READY
+    ) {
+      return "화력수색 · 실행 준비";
+    }
+
+    if (
+      state ===
+      DIRECTED_ACTION_STATES.EXECUTING
+    ) {
+      return "화력수색 · 실행 중";
+    }
+
+    return "화력수색 · 목표 지정";
   }
 
   function render() {
@@ -837,9 +921,6 @@ export function createFirePanel({
       createButton(
         "표적 지정",
         {
-          active:
-            targetSelectionActive,
-
           current:
             procedureState ===
             FIRE_PROCEDURE_STATES
@@ -850,21 +931,30 @@ export function createFirePanel({
             FIRE_STATES.ADJUST,
 
           onClick: () => {
-            const started =
-              onBeginTargetSelection();
-
-            if (!started) {
-              return;
-            }
-
-            targetSelectionActive =
-              true;
+            onBeginTargetSelection();
 
             onMessage(
               "지도에서 사격 목표 헥스를 선택하세요.",
             );
+          },
+        },
+      ),
+    );
 
-            render();
+    wrapper.append(
+      createButton(
+        getReconByFireLabel(unit),
+        {
+          active:
+            unit.action?.type ===
+            UNIT_ACTIONS.RECON_BY_FIRE,
+
+          onClick: () => {
+            onBeginReconByFireSelection?.();
+
+            onMessage(
+              "지도에서 화력수색 목표 헥스를 선택하세요.",
+            );
           },
         },
       ),
@@ -1144,7 +1234,6 @@ export function createFirePanel({
     render,
     reset,
     setTarget,
-    setTargetSelectionActive,
 
     getProcedure() {
       return {

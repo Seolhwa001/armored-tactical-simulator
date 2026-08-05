@@ -2,10 +2,10 @@
 // ATS PROJECT
 // File      : src/ui/commandPanel.js
 // Sprint    : 3.9.1
-// Revision  : R6
+// Revision  : R7
 // Build     : 2026-08-05
-// Type      : FULL REPLACEMENT
-// Purpose   : Command UI with crew observation, Loader hatch, HK, and smoke
+// Type      : PARTIAL PATCH
+// Purpose   : Observation UI with selectable CPS modes
 // ============================================================
 
 import {
@@ -14,8 +14,10 @@ import {
 
 import {
   canAssignCrewObservation,
+  CPS_MODES,
   designateHunterKillerTarget,
   setCommanderSightDirection,
+  setCommanderSightMode,
   setCrewObservationDirection,
   setPersistentAction,
 } from "../engine/actions.js";
@@ -160,20 +162,26 @@ function createStatusRow(
   value,
 ) {
   const row =
+    document.createElement("div");
+
+  const labelElement =
     document.createElement("span");
 
-  const strong =
+  const valueElement =
     document.createElement("strong");
 
-  row.append(
-    `${label}: `,
-  );
+  row.className = "status-field";
+  labelElement.className =
+    "status-field__label";
+  valueElement.className =
+    "status-field__value";
 
-  strong.textContent =
-    value;
+  labelElement.textContent = label;
+  valueElement.textContent = value;
 
   row.append(
-    strong,
+    labelElement,
+    valueElement,
   );
 
   return row;
@@ -1032,6 +1040,99 @@ export function createCommandPanel({
     return section;
   }
 
+  function createCpsModeControls(
+    unit,
+    hunterKillerEnabled,
+  ) {
+    const wrapper =
+      document.createElement("div");
+
+    const sight =
+      unit.crewObservation
+        ?.commanderIndependentSight;
+
+    const currentMode =
+      sight?.cpsMode ??
+      CPS_MODES.TURRET_COUPLED;
+
+    wrapper.className =
+      "cps-mode-controls";
+
+    wrapper.append(
+      createButton(
+        "포탑 종속",
+        {
+          active:
+            currentMode ===
+            CPS_MODES.TURRET_COUPLED,
+          disabled:
+            sight?.operational !== true,
+          onClick: () => {
+            if (
+              setCommanderSightMode(
+                unit,
+                CPS_MODES.TURRET_COUPLED,
+              )
+            ) {
+              unit.command =
+                "CPS 포탑 종속";
+              onStateChanged();
+              onMessage(
+                "CPS를 포탑 종속 모드로 전환했습니다.",
+              );
+              renderTurret();
+            }
+          },
+        },
+      ),
+      createButton(
+        "독립 감시",
+        {
+          active:
+            currentMode ===
+            CPS_MODES.INDEPENDENT,
+          disabled:
+            sight?.operational !== true,
+          onClick: () => {
+            if (
+              setCommanderSightMode(
+                unit,
+                CPS_MODES.INDEPENDENT,
+              )
+            ) {
+              unit.command =
+                "CPS 독립 감시";
+              onStateChanged();
+              onMessage(
+                "CPS를 독립 감시 모드로 전환했습니다.",
+              );
+              renderTurret();
+            }
+          },
+        },
+      ),
+      createButton(
+        "헌터킬러",
+        {
+          active:
+            currentMode ===
+            CPS_MODES.HUNTER_KILLER,
+          disabled:
+            !hunterKillerEnabled ||
+            sight?.operational !== true,
+          onClick: (event) => {
+            onCommandSelected(
+              createHunterKillerCommand(),
+              event.currentTarget,
+            );
+          },
+        },
+      ),
+    );
+
+    return wrapper;
+  }
+
   function renderObservationSection(
     unit,
   ) {
@@ -1069,6 +1170,13 @@ export function createCommandPanel({
       unit.crewObservation
         ?.hunterKiller
         ?.enabled === true;
+
+    section.append(
+      createCpsModeControls(
+        unit,
+        hunterKillerEnabled,
+      ),
+    );
 
     section.append(
       createCommandButton(
@@ -1121,14 +1229,6 @@ export function createCommandPanel({
           id: "recon",
           label: "360도 정찰",
           needsTarget: false,
-        },
-        onCommandSelected,
-      ),
-      createCommandButton(
-        {
-          id: "recon-by-fire",
-          label: "화력수색",
-          needsTarget: true,
         },
         onCommandSelected,
       ),
