@@ -2,10 +2,10 @@
    ATS PROJECT
    File      : src/styles/developerHud.css
    Sprint    : 3.9.2
-   Revision  : R3
+   Revision  : R4
    Build     : 2026-08-05
-   Type      : FULL REPLACEMENT
-   Purpose   : Collapsible mobile-safe developer HUD styling
+   Type      : PARTIAL PATCH
+   Purpose   : Verified collapsible HUD with command-dock clearance
    ============================================================ */
 
 .developer-hud {
@@ -266,9 +266,13 @@
         calc(100vw - 12px)
       );
 
-    max-height: calc(100dvh - 210px);
+    max-height: calc(100dvh - 248px);
 
     font-size: 10px;
+  }
+
+  .developer-hud.is-collapsed {
+    width: min(210px, calc(100vw - 12px));
   }
 
   .developer-hud__header {
