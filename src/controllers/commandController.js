@@ -1,3 +1,13 @@
+// ============================================================
+// ATS PROJECT
+// File      : src/controllers/commandController.js
+// Sprint    : 3.9.1
+// Revision  : R1
+// Build     : 2026-08-05
+// Type      : PARTIAL PATCH
+// Purpose   : Command selection with immediate fire-target feedback
+// ============================================================
+
 // src/controllers/commandController.js — 신규 파일, 예상 1~130행
 
 export function createCommandController({
@@ -111,6 +121,11 @@ export function createCommandController({
     state.activeCategory = category;
     state.selectedCommand = null;
 
+    firePanel
+      .setTargetSelectionActive?.(
+        false,
+      );
+
     updateActiveCategoryButton(
       category,
     );
@@ -147,11 +162,23 @@ export function createCommandController({
       needsTarget: true,
     };
 
+    firePanel
+      .setTargetSelectionActive?.(
+        true,
+      );
+
+    firePanel.render();
+
     return true;
   }
 
   function clearSelectedCommand() {
     state.selectedCommand = null;
+
+    firePanel
+      .setTargetSelectionActive?.(
+        false,
+      );
 
     updateSelectedCommandButton(
       null,
