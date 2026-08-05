@@ -2,7 +2,7 @@
 // ATS PROJECT
 // File      : src/controllers/scenarioController.js
 // Sprint    : 3.9.1
-// Revision  : R2
+// Revision  : R3
 // Build     : 2026-08-05
 // Type      : FULL REPLACEMENT
 // Purpose   : Scenario initialization and initial crew synchronization
@@ -144,6 +144,15 @@ export function createScenarioController({
       unit.detected = false;
       unit.identified = false;
       unit.lastKnownPosition = null;
+
+      unit.detectedByUnitId =
+        null;
+
+      unit.detectedByCrewRole =
+        null;
+
+      unit.detectionConfidence =
+        0;
     });
   }
 
@@ -210,6 +219,9 @@ export function createScenarioController({
 
     state.selectedUnitId =
       state.playerUnitId;
+
+    state.debugSelectedUnitId =
+      state.selectedUnitId;
 
     state.selectedCommand = null;
     state.selectedHex = null;
