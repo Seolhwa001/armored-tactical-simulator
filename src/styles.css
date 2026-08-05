@@ -1011,3 +1011,53 @@ input:focus-visible {
       var(--border);
   }
 }
+
+
+/* Sprint 3.9.2 hotfix: mobile-friendly status fields */
+.status-field {
+  display: grid;
+  grid-template-columns: minmax(88px, 0.8fr) minmax(0, 1.2fr);
+  gap: 8px;
+  align-items: start;
+  width: 100%;
+  padding: 5px 0;
+  border-bottom: 1px dotted rgba(255, 255, 255, 0.09);
+}
+
+.status-field:last-child {
+  border-bottom: 0;
+}
+
+.status-field__label {
+  color: var(--text-muted, #a9bbb2);
+  font-size: 0.78rem;
+}
+
+.status-field__value {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.cps-mode-controls {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin: 8px 0;
+}
+
+@media (max-width: 720px) {
+  .status-field {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+
+  .status-field__value {
+    text-align: left;
+    font-size: 0.92rem;
+  }
+
+  .cps-mode-controls {
+    grid-template-columns: 1fr;
+  }
+}
