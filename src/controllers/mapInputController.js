@@ -1,4 +1,33 @@
-// src/controllers/mapInputController.js — 신규 파일, 예상 1~350행
+// ============================================================
+// ATS PROJECT
+// File      : src/controllers/mapInputController.js
+// Sprint    : 3.9.1
+// Revision  : R6
+// Build     : 2026-08-05
+// Type      : FULL REPLACEMENT
+// Purpose   : Map input, shared hex targeting, and developer detection debug
+// ============================================================
+
+import {
+  getHexDirection,
+} from "../engine/hexGeometry.js";
+
+const DETECTION_STAGE_LABELS = Object.freeze({
+  0: "HIDDEN",
+  1: "CONTACT",
+  2: "DETECTED",
+  3: "IDENTIFIED",
+});
+
+const DETECTION_CREW_ROLE_LABELS = Object.freeze({
+  commander: "전차장",
+  gunner: "포수",
+  driver: "조종수",
+  loader: "탄약수",
+  "commander-cps": "CPS",
+  "crew-recon": "360도 정찰",
+  "recon-by-fire": "화력수색",
+});
 
 export function createMapInputController({
   state,
@@ -29,15 +58,125 @@ export function createMapInputController({
   startEffectLoop,
 }) {
   function getUnits() {
-    return state.runtimeScenario?.units ?? [];
+    return (
+      state.runtimeScenario
+        ?.units ?? []
+    );
+  }
+
+  function getUnitById(unitId) {
+    if (!unitId) {
+      return null;
+    }
+
+    return (
+      getUnits().find(
+        (unit) =>
+          unit.id === unitId,
+      ) ?? null
+    );
+  }
+
+  function getUnitDisplayName(unit) {
+    if (!unit) {
+      return "없음";
+    }
+
+    return (
+      unit.name ??
+      unit.id ??
+      "없음"
+    );
+  }
+
+  function getDetectionStageLabel(
+    unit,
+  ) {
+    const detectionStage =
+      unit.detectionStage;
+
+    return (
+      DETECTION_STAGE_LABELS[
+        detectionStage
+      ] ??
+      `UNKNOWN(${detectionStage ?? "-"})`
+    );
+  }
+
+  function getDetectionCrewRoleLabel(
+    unit,
+  ) {
+    const crewRole =
+      unit.detectedByCrewRole;
+
+    if (!crewRole) {
+      return "없음";
+    }
+
+    return (
+      DETECTION_CREW_ROLE_LABELS[
+        crewRole
+      ] ??
+      crewRole
+    );
+  }
+
+  function getDetectionUnitLabel(unit) {
+    const detectionUnit =
+      getUnitById(
+        unit.detectedByUnitId,
+      );
+
+    return getUnitDisplayName(
+      detectionUnit,
+    );
+  }
+
+  function getDetectionConfidenceLabel(
+    unit,
+  ) {
+    const confidence =
+      Number.isFinite(
+        unit.detectionConfidence,
+      )
+        ? Math.max(
+            0,
+            Math.min(
+              100,
+              unit.detectionConfidence,
+            ),
+          )
+        : 0;
+
+    return `${confidence}%`;
+  }
+
+  function createDeveloperDetectionMessage(
+    unit,
+  ) {
+    return [
+      `탐지 단계 ${getDetectionStageLabel(
+        unit,
+      )}`,
+      `탐지 신뢰도 ${getDetectionConfidenceLabel(
+        unit,
+      )}`,
+      `탐지 차량 ${getDetectionUnitLabel(
+        unit,
+      )}`,
+      `탐지 승무원 ${getDetectionCrewRoleLabel(
+        unit,
+      )}`,
+    ].join(" | ");
   }
 
   function refreshFogAndRender() {
-    const changed = updateFog(
-      state.fog,
-      state.terrain,
-      getUnits(),
-    );
+    const changed =
+      updateFog(
+        state.fog,
+        state.terrain,
+        getUnits(),
+      );
 
     if (changed) {
       mapRenderer.invalidateFog();
@@ -52,22 +191,13 @@ export function createMapInputController({
     render();
   }
 
-  function calculateDirection(from, to) {
-    const start = hexToWorld(
-      from.column,
-      from.row,
-      hexRadius,
-    );
-
-    const end = hexToWorld(
-      to.column,
-      to.row,
-      hexRadius,
-    );
-
-    return Math.atan2(
-      end.y - start.y,
-      end.x - start.x,
+  function calculateDirection(
+    from,
+    to,
+  ) {
+    return getHexDirection(
+      from,
+      to,
     );
   }
 
@@ -84,24 +214,33 @@ export function createMapInputController({
       return;
     }
 
-    const result = planUnitMovement({
-      unit,
-      destination: hex,
-      getNeighbors,
-      getMovementCost,
-    });
+    const result =
+      planUnitMovement({
+        unit,
+        destination: hex,
+        getNeighbors,
+        getMovementCost,
+      });
 
     if (!result.success) {
-      setMessage(result.reason);
+      setMessage(
+        result.reason,
+      );
+
       return;
     }
 
     setPersistentAction(
       unit,
       {
-        type: unitActions.MOVE,
-        targetHex: hex,
-        label: command.label,
+        type:
+          unitActions.MOVE,
+
+        targetHex:
+          hex,
+
+        label:
+          command.label,
       },
       state.turn,
     );
@@ -116,10 +255,11 @@ export function createMapInputController({
     command,
     hex,
   ) {
-    const direction = calculateDirection(
-      unit,
-      hex,
-    );
+    const direction =
+      calculateDirection(
+        unit,
+        hex,
+      );
 
     if (
       typeof command.onTarget ===
@@ -138,13 +278,21 @@ export function createMapInputController({
     setPersistentAction(
       unit,
       {
-        type: unitActions.OBSERVE,
-        targetHex: hex,
+        type:
+          unitActions.OBSERVE,
+
+        targetHex:
+          hex,
+
         direction,
+
         crewRole:
-          command.crewRole ?? null,
+          command.crewRole ??
+          null,
+
         label:
-          command.label ?? "감시",
+          command.label ??
+          "감시",
       },
       state.turn,
     );
@@ -158,22 +306,28 @@ export function createMapInputController({
     unit,
     hex,
   ) {
-    const hiddenBefore = new Set(
-      getUnits()
-        .filter(
-          (enemy) =>
-            enemy.side === "enemy" &&
-            !enemy.visible,
-        )
-        .map((enemy) => enemy.id),
-    );
+    const hiddenBefore =
+      new Set(
+        getUnits()
+          .filter(
+            (enemy) =>
+              enemy.side ===
+                "enemy" &&
+              !enemy.visible,
+          )
+          .map(
+            (enemy) =>
+              enemy.id,
+          ),
+      );
 
-    const affected = applyReconByFire(
-      state.runtimeScenario,
-      unit,
-      hex,
-      state.turn,
-    );
+    const affected =
+      applyReconByFire(
+        state.runtimeScenario,
+        unit,
+        hex,
+        state.turn,
+      );
 
     addFireEffect(
       state.effects,
@@ -190,17 +344,21 @@ export function createMapInputController({
       state.turn,
     );
 
-    affected.forEach((enemy) => {
-      if (
-        hiddenBefore.has(enemy.id) &&
-        enemy.visible
-      ) {
-        addContactEffect(
-          state.effects,
-          enemy,
-        );
-      }
-    });
+    affected.forEach(
+      (enemy) => {
+        if (
+          hiddenBefore.has(
+            enemy.id,
+          ) &&
+          enemy.visible
+        ) {
+          addContactEffect(
+            state.effects,
+            enemy,
+          );
+        }
+      },
+    );
 
     setMessage(
       `화력수색 시작: ${hex.column}, ${hex.row}`,
@@ -209,10 +367,13 @@ export function createMapInputController({
     startEffectLoop();
   }
 
-  function findVisibleEnemyAtHex(hex) {
+  function findVisibleEnemyAtHex(
+    hex,
+  ) {
     return getUnits().find(
       (candidate) =>
-        candidate.side === "enemy" &&
+        candidate.side ===
+          "enemy" &&
         !candidate.destroyed &&
         candidate.column ===
           hex.column &&
@@ -230,7 +391,9 @@ export function createMapInputController({
     hex,
   ) {
     const target =
-      findVisibleEnemyAtHex(hex);
+      findVisibleEnemyAtHex(
+        hex,
+      );
 
     if (!target) {
       setMessage(
@@ -242,14 +405,16 @@ export function createMapInputController({
 
     if (
       typeof state.selectedCommand
-        ?.onTarget === "function"
+        ?.onTarget ===
+      "function"
     ) {
-      state.selectedCommand.onTarget({
-        unit,
-        targetUnit: target,
-        hex,
-        turn: state.turn,
-      });
+      state.selectedCommand
+        .onTarget({
+          unit,
+          targetUnit: target,
+          hex,
+          turn: state.turn,
+        });
 
       return;
     }
@@ -261,7 +426,9 @@ export function createMapInputController({
 
   function handleFireTarget(hex) {
     const enemy =
-      findVisibleEnemyAtHex(hex);
+      findVisibleEnemyAtHex(
+        hex,
+      );
 
     firePanel.setTarget(
       hex,
@@ -269,18 +436,24 @@ export function createMapInputController({
     );
   }
 
-  function showTerrainInformation(hex) {
-    const terrain = state.terrain.get(
-      `${hex.column},${hex.row}`,
-    );
+  function showTerrainInformation(
+    hex,
+  ) {
+    const terrain =
+      state.terrain.get(
+        `${hex.column},${hex.row}`,
+      );
 
     if (!terrain) {
       render();
+
       return false;
     }
 
     const type =
-      terrainTypes[terrain.type];
+      terrainTypes[
+        terrain.type
+      ];
 
     setMessage(
       `${type.name} | 고도 ${terrain.elevation}m | 은폐 ${type.concealment}% | 엄폐 ${type.cover}%`,
@@ -292,26 +465,36 @@ export function createMapInputController({
   function handleHexSelection(hex) {
     if (
       !hex ||
-      !Number.isFinite(hex.column) ||
-      !Number.isFinite(hex.row)
+      !Number.isFinite(
+        hex.column,
+      ) ||
+      !Number.isFinite(
+        hex.row,
+      )
     ) {
       return;
     }
 
-    const unit = getSelectedUnit();
+    const unit =
+      getSelectedUnit();
 
     state.selectedHex = {
-      column: hex.column,
-      row: hex.row,
+      column:
+        hex.column,
+
+      row:
+        hex.row,
     };
 
     if (!unit) {
       render();
+
       return;
     }
 
     if (unit.destroyed) {
-      state.selectedCommand = null;
+      state.selectedCommand =
+        null;
 
       setMessage(
         "자차가 격파되어 명령을 실행할 수 없습니다.",
@@ -337,7 +520,8 @@ export function createMapInputController({
         state.selectedHex,
       );
     } else if (
-      command?.id === "observation" ||
+      command?.id ===
+        "observation" ||
       command?.id ===
         "crew-observation" ||
       command?.id ===
@@ -349,21 +533,24 @@ export function createMapInputController({
         state.selectedHex,
       );
     } else if (
-      command?.id === "hunter-killer"
+      command?.id ===
+      "hunter-killer"
     ) {
       handleHunterKillerTarget(
         unit,
         state.selectedHex,
       );
     } else if (
-      command?.id === "recon-by-fire"
+      command?.id ===
+      "recon-by-fire"
     ) {
       handleReconByFireTarget(
         unit,
         state.selectedHex,
       );
     } else if (
-      command?.id === "fire-target"
+      command?.id ===
+      "fire-target"
     ) {
       handleFireTarget(
         state.selectedHex,
@@ -376,13 +563,16 @@ export function createMapInputController({
       return;
     }
 
-    state.selectedCommand = null;
+    state.selectedCommand =
+      null;
 
     refreshFogAndRender();
 
     if (
-      state.activeCategory === "fire" ||
-      state.activeCategory === "combat"
+      state.activeCategory ===
+        "fire" ||
+      state.activeCategory ===
+        "combat"
     ) {
       firePanel.render();
     }
@@ -395,25 +585,36 @@ export function createMapInputController({
     let nearest = null;
     let distance = Infinity;
 
-    state.terrain.forEach((hex) => {
-      const point = hexToWorld(
-        hex.column,
-        hex.row,
-        hexRadius,
-      );
+    state.terrain.forEach(
+      (hex) => {
+        const point =
+          hexToWorld(
+            hex.column,
+            hex.row,
+            hexRadius,
+          );
 
-      const current = Math.hypot(
-        worldX - point.x,
-        worldY - point.y,
-      );
+        const current =
+          Math.hypot(
+            worldX - point.x,
+            worldY - point.y,
+          );
 
-      if (current < distance) {
-        distance = current;
-        nearest = hex;
-      }
-    });
+        if (
+          current <
+          distance
+        ) {
+          distance =
+            current;
 
-    return distance <= hexRadius
+          nearest =
+            hex;
+        }
+      },
+    );
+
+    return distance <=
+      hexRadius
       ? nearest
       : null;
   }
@@ -422,33 +623,36 @@ export function createMapInputController({
     worldX,
     worldY,
   ) {
-    return getUnits().find((unit) => {
-      if (
-        unit.destroyed ||
-        !isUnitVisible(
-          unit,
-          state.developerMode,
-        )
-      ) {
-        return false;
-      }
+    return getUnits().find(
+      (unit) => {
+        if (
+          unit.destroyed ||
+          !isUnitVisible(
+            unit,
+            state.developerMode,
+          )
+        ) {
+          return false;
+        }
 
-      const point = hexToWorld(
-        unit.column,
-        unit.row,
-        hexRadius,
-      );
+        const point =
+          hexToWorld(
+            unit.column,
+            unit.row,
+            hexRadius,
+          );
 
-      return (
-        Math.hypot(
-          worldX - point.x,
-          worldY - point.y,
-        ) <= 30
-      );
-    });
+        return (
+          Math.hypot(
+            worldX - point.x,
+            worldY - point.y,
+          ) <= 30
+        );
+      },
+    );
   }
 
-  function showTappedUnitInformation(
+  function getNormalUnitMessage(
     tappedUnit,
   ) {
     const playerUnit =
@@ -458,20 +662,51 @@ export function createMapInputController({
       tappedUnit.id ===
       playerUnit?.id
     ) {
-      setMessage(
-        `${playerUnit.name} / ${getHealthSummary(playerUnit)}`,
+      return (
+        `${playerUnit.name} / ` +
+        `${getHealthSummary(
+          playerUnit,
+        )}`
       );
-    } else if (
-      tappedUnit.side === "enemy"
+    }
+
+    if (
+      tappedUnit.side ===
+      "enemy"
+    ) {
+      return tappedUnit.identified
+        ? (
+            `${tappedUnit.name ?? tappedUnit.id} 접촉`
+          )
+        : "미확인 적 접촉";
+    }
+
+    return (
+      `${tappedUnit.name ?? tappedUnit.id} 위치`
+    );
+  }
+
+  function showTappedUnitInformation(
+    tappedUnit,
+  ) {
+    const normalMessage =
+      getNormalUnitMessage(
+        tappedUnit,
+      );
+
+    if (
+      state.developerMode &&
+      tappedUnit.side ===
+        "enemy"
     ) {
       setMessage(
-        tappedUnit.identified
-          ? `${tappedUnit.name ?? tappedUnit.id} 접촉`
-          : "미확인 적 접촉",
+        `${normalMessage} | ${createDeveloperDetectionMessage(
+          tappedUnit,
+        )}`,
       );
     } else {
       setMessage(
-        `${tappedUnit.name ?? tappedUnit.id} 위치`,
+        normalMessage,
       );
     }
 
@@ -510,15 +745,19 @@ export function createMapInputController({
         world.y,
       );
 
-    const tappedHex = tappedUnit
-      ? {
-          column: tappedUnit.column,
-          row: tappedUnit.row,
-        }
-      : worldToHex(
-          world.x,
-          world.y,
-        );
+    const tappedHex =
+      tappedUnit
+        ? {
+            column:
+              tappedUnit.column,
+
+            row:
+              tappedUnit.row,
+          }
+        : worldToHex(
+            world.x,
+            world.y,
+          );
 
     if (
       state.selectedCommand
