@@ -17,12 +17,6 @@ import {
   HUNTER_KILLER_STATES,
 } from "./runtimeConstants.js";
 
-import {
-  OBSERVATION_MEANS,
-  CREW_VISION_PROFILES,
-  degreesToRadians,
-} from "../contracts/index.js";
-
 const DEFAULT_IDENTIFICATION_FACTOR =
   1;
 
@@ -75,8 +69,6 @@ function createCrewObserver({
     DEFAULT_IDENTIFICATION_FACTOR,
   observing = true,
   observationMode = "normal",
-  observationMean = null,
-  rangeMode = "legacy-multiplier",
 }) {
   const safeDirection =
     normalizeAngle(direction);
@@ -131,8 +123,6 @@ function createCrewObserver({
       safeIdentificationFactor,
 
     observationMode,
-    observationMean,
-    rangeMode,
 
     lastUpdatedTurn:
       null,
@@ -147,18 +137,11 @@ function createCommanderSight(
       hullDirection,
     );
 
-  const profile =
-    CREW_VISION_PROFILES[
-      OBSERVATION_MEANS.COMMANDER_CPS
-    ];
-
   const fieldOfView =
-    degreesToRadians(
-      profile.fieldOfViewDegrees,
-    );
+    Math.PI / 4;
 
   const range =
-    profile.rangeHexes;
+    1.18;
 
   const identificationFactor =
     1.2;
@@ -187,12 +170,6 @@ function createCommanderSight(
       range,
 
     identificationFactor,
-
-    observationMean:
-      OBSERVATION_MEANS.COMMANDER_CPS,
-
-    rangeMode:
-      profile.rangeMode,
 
     baseIdentificationFactor:
       identificationFactor,
@@ -252,16 +229,10 @@ export function createCrewObservation({
             safeHullDirection,
 
           fieldOfView:
-            degreesToRadians(
-              CREW_VISION_PROFILES[
-                OBSERVATION_MEANS.COMMANDER_VISUAL
-              ].fieldOfViewDegrees,
-            ),
+            Math.PI / 2,
 
           range:
-            CREW_VISION_PROFILES[
-              OBSERVATION_MEANS.COMMANDER_VISUAL
-            ].rangeHexes,
+            1,
 
           identificationFactor:
             1,
@@ -271,14 +242,6 @@ export function createCrewObservation({
 
           observationMode:
             "visual",
-
-          observationMean:
-            OBSERVATION_MEANS.COMMANDER_VISUAL,
-
-          rangeMode:
-            CREW_VISION_PROFILES[
-              OBSERVATION_MEANS.COMMANDER_VISUAL
-            ].rangeMode,
         }),
 
       [CREW_ROLES.GUNNER]:
@@ -287,16 +250,10 @@ export function createCrewObservation({
             safeHullDirection,
 
           fieldOfView:
-            degreesToRadians(
-              CREW_VISION_PROFILES[
-                OBSERVATION_MEANS.GUNNER_MAIN_SIGHT
-              ].fieldOfViewDegrees,
-            ),
+            Math.PI / 6,
 
           range:
-            CREW_VISION_PROFILES[
-              OBSERVATION_MEANS.GUNNER_MAIN_SIGHT
-            ].rangeHexes,
+            0.85,
 
           identificationFactor:
             0.9,
@@ -306,14 +263,6 @@ export function createCrewObservation({
 
           observationMode:
             "turret-coupled",
-
-          observationMean:
-            OBSERVATION_MEANS.GUNNER_MAIN_SIGHT,
-
-          rangeMode:
-            CREW_VISION_PROFILES[
-              OBSERVATION_MEANS.GUNNER_MAIN_SIGHT
-            ].rangeMode,
         }),
 
       [CREW_ROLES.DRIVER]:
@@ -322,16 +271,10 @@ export function createCrewObservation({
             safeHullDirection,
 
           fieldOfView:
-            degreesToRadians(
-              CREW_VISION_PROFILES[
-                OBSERVATION_MEANS.DRIVER_FORWARD
-              ].fieldOfViewDegrees,
-            ),
+            Math.PI / 2.5,
 
           range:
-            CREW_VISION_PROFILES[
-              OBSERVATION_MEANS.DRIVER_FORWARD
-            ].rangeHexes,
+            0.55,
 
           identificationFactor:
             0.45,
@@ -341,14 +284,6 @@ export function createCrewObservation({
 
           observationMode:
             "hull-forward",
-
-          observationMean:
-            OBSERVATION_MEANS.DRIVER_FORWARD,
-
-          rangeMode:
-            CREW_VISION_PROFILES[
-              OBSERVATION_MEANS.DRIVER_FORWARD
-            ].rangeMode,
         }),
 
       [CREW_ROLES.LOADER]:
@@ -357,16 +292,10 @@ export function createCrewObservation({
             loaderInitialDirection,
 
           fieldOfView:
-            degreesToRadians(
-              CREW_VISION_PROFILES[
-                OBSERVATION_MEANS.LOADER_VISUAL
-              ].fieldOfViewDegrees,
-            ),
+            Math.PI / 2.2,
 
           range:
-            CREW_VISION_PROFILES[
-              OBSERVATION_MEANS.LOADER_VISUAL
-            ].rangeHexes,
+            0.6,
 
           identificationFactor:
             0.5,
@@ -375,15 +304,7 @@ export function createCrewObservation({
             true,
 
           observationMode:
-            "visual",
-
-          observationMean:
-            OBSERVATION_MEANS.LOADER_VISUAL,
-
-          rangeMode:
-            CREW_VISION_PROFILES[
-              OBSERVATION_MEANS.LOADER_VISUAL
-            ].rangeMode,
+            "periscope",
         }),
     },
 

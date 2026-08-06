@@ -1,6 +1,11 @@
 // src/engine/runtime/runtimeConstants.js — 새 파일, 1~17행
 
-export { CREW_ROLES } from "../contracts/crewContract.js";
+export const CREW_ROLES = Object.freeze({
+  COMMANDER: "commander",
+  GUNNER: "gunner",
+  DRIVER: "driver",
+  LOADER: "loader",
+});
 
 export const HUNTER_KILLER_STATES = Object.freeze({
   SEARCHING: "searching",
