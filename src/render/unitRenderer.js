@@ -37,7 +37,7 @@ const CREW_OBSERVATION_STYLES =
         "rgba(255, 218, 128, 0.9)",
 
       fill:
-        "rgba(255, 218, 128, 0.1)",
+        "rgba(255, 218, 128, 0.025)",
     },
 
     [CREW_ROLES.GUNNER]: {
@@ -45,7 +45,7 @@ const CREW_OBSERVATION_STYLES =
         "rgba(128, 194, 255, 0.9)",
 
       fill:
-        "rgba(128, 194, 255, 0.1)",
+        "rgba(128, 194, 255, 0.025)",
     },
 
     [CREW_ROLES.DRIVER]: {
@@ -53,7 +53,7 @@ const CREW_OBSERVATION_STYLES =
         "rgba(153, 221, 161, 0.9)",
 
       fill:
-        "rgba(153, 221, 161, 0.1)",
+        "rgba(153, 221, 161, 0.025)",
     },
 
     [CREW_ROLES.LOADER]: {
@@ -61,7 +61,7 @@ const CREW_OBSERVATION_STYLES =
         "rgba(211, 165, 255, 0.9)",
 
       fill:
-        "rgba(211, 165, 255, 0.1)",
+        "rgba(211, 165, 255, 0.025)",
     },
   });
 
@@ -1118,62 +1118,8 @@ function drawCpsObservationArea(
     hexToWorld,
     hexRadius,
     strokeStyle: "rgba(255, 240, 145, 0.95)",
-    fillStyle: "rgba(255, 240, 145, 0.08)",
+    fillStyle: "rgba(255, 240, 145, 0.02)",
   });
-}
-
-function isReconActive(unit) {
-  return (
-    unit.persistentAction?.type ===
-      UNIT_ACTIONS.RECON ||
-    unit.action?.type ===
-      UNIT_ACTIONS.RECON
-  );
-}
-
-function drawReconArea(
-  context,
-  unit,
-  point,
-  hexRadius,
-) {
-  if (
-    unit.side !== "friendly" ||
-    unit.destroyed ||
-    !isReconActive(unit)
-  ) {
-    return;
-  }
-
-  context.save();
-
-  context.fillStyle =
-    "rgba(112, 196, 151, 0.10)";
-
-  context.strokeStyle =
-    "rgba(150, 230, 184, 0.7)";
-
-  context.lineWidth =
-    2;
-
-  context.setLineDash(
-    [7, 5],
-  );
-
-  context.beginPath();
-
-  context.arc(
-    point.x,
-    point.y,
-    hexRadius *
-      getBaseVisualRange(unit),
-    0,
-    Math.PI * 2,
-  );
-
-  context.fill();
-  context.stroke();
-  context.restore();
 }
 
 function drawObservationAreas(
@@ -1191,13 +1137,6 @@ function drawObservationAreas(
   ) {
     return;
   }
-
-  drawReconArea(
-    context,
-    unit,
-    point,
-    hexRadius,
-  );
 
   drawCrewObservationAreas(
     context,

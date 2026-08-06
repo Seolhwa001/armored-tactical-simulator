@@ -138,21 +138,6 @@ function getActiveObservationCapabilities(unit) {
     }
   }
 
-  if (
-    unit.action?.type === "recon" ||
-    unit.persistentAction?.type === "recon"
-  ) {
-    capabilities.push({
-      role: "crew-recon",
-      direction: 0,
-      fieldOfView: Math.PI * 2,
-      range: getObservationVisualRange(
-        unit,
-        { role: "crew-recon" },
-      ),
-    });
-  }
-
   return capabilities;
 }
 
