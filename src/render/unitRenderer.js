@@ -22,6 +22,11 @@ import {
   isUnitVisible,
 } from "../engine/detection.js";
 
+import {
+  calculateViewHexes,
+  toHexKey,
+} from "../engine/view.js";
+
 const DEFAULT_VISUAL_RANGE =
   7;
 
@@ -924,223 +929,197 @@ function drawHealthBar(
   context.restore();
 }
 
-function drawObservationCone(
+function getHexCorners(point, hexRadius) {
+  const corners = [];
+
+  for (let index = 0; index < 6; index += 1) {
+    const angle = Math.PI / 180 * (60 * index - 30);
+    corners.push({
+      x: point.x + hexRadius * Math.cos(angle),
+      y: point.y + hexRadius * Math.sin(angle),
+    });
+  }
+
+  return corners;
+}
+
+const HEX_NEIGHBOR_OFFSETS = Object.freeze({
+  even: Object.freeze([
+    [0, -1], [1, 0], [0, 1], [-1, 1], [-1, 0], [-1, -1],
+  ]),
+  odd: Object.freeze([
+    [1, -1], [1, 0], [1, 1], [0, 1], [-1, 0], [0, -1],
+  ]),
+});
+
+function drawHexViewArea({
   context,
-  point,
-  direction,
-  fieldOfView,
-  radius,
+  viewHexes,
+  hexToWorld,
+  hexRadius,
   strokeStyle,
   fillStyle,
-  lineDash = [],
-) {
-  if (
-    !Number.isFinite(direction) ||
-    !Number.isFinite(fieldOfView) ||
-    !Number.isFinite(radius) ||
-    fieldOfView <= 0 ||
-    radius <= 0
-  ) {
+}) {
+  if (!(viewHexes instanceof Set) || viewHexes.size === 0) {
     return;
   }
 
   context.save();
+  context.fillStyle = fillStyle;
+  context.strokeStyle = strokeStyle;
+  context.lineWidth = 2;
+  context.lineJoin = "round";
 
-  context.fillStyle =
-    fillStyle;
+  viewHexes.forEach((key) => {
+    const [column, row] = key.split(",").map(Number);
+    const point = hexToWorld(column, row);
+    const corners = getHexCorners(point, hexRadius);
 
-  context.strokeStyle =
-    strokeStyle;
+    context.beginPath();
+    corners.forEach((corner, index) => {
+      if (index === 0) {
+        context.moveTo(corner.x, corner.y);
+      } else {
+        context.lineTo(corner.x, corner.y);
+      }
+    });
+    context.closePath();
+    context.fill();
 
-  context.lineWidth =
-    2;
+    const offsets = row % 2 === 0
+      ? HEX_NEIGHBOR_OFFSETS.even
+      : HEX_NEIGHBOR_OFFSETS.odd;
 
-  context.setLineDash(
-    lineDash,
-  );
+    offsets.forEach(([columnOffset, rowOffset], side) => {
+      const neighborKey = toHexKey(column + columnOffset, row + rowOffset);
+      if (viewHexes.has(neighborKey)) {
+        return;
+      }
 
-  context.beginPath();
+      const first = corners[side];
+      const second = corners[(side + 1) % 6];
+      context.beginPath();
+      context.moveTo(first.x, first.y);
+      context.lineTo(second.x, second.y);
+      context.stroke();
+    });
+  });
 
-  context.moveTo(
-    point.x,
-    point.y,
-  );
-
-  context.arc(
-    point.x,
-    point.y,
-    radius,
-    direction -
-      fieldOfView / 2,
-    direction +
-      fieldOfView / 2,
-  );
-
-  context.closePath();
-  context.fill();
-  context.stroke();
   context.restore();
 }
+
+function buildObserverView(unit, observer, role, terrain, smokeAreas) {
+  return calculateViewHexes({
+    origin: {
+      column: unit.column,
+      row: unit.row,
+    },
+    direction: observer.direction,
+    fieldOfView: finiteOrDefault(observer.fieldOfView, Math.PI / 2),
+    maximumRange:
+      getObservationVisualRange(unit, { role }) *
+      nonNegativeOrDefault(observer.range, 1),
+    terrain,
+    smokeAreas,
+  });
+}
+
 function drawCrewObservationAreas(
   context,
   unit,
-  point,
   hexRadius,
+  hexToWorld,
+  terrain,
+  smokeAreas,
 ) {
   if (
     unit.side !== "friendly" ||
     unit.destroyed ||
-    !unit.crewObservation
+    !unit.crewObservation ||
+    !(terrain instanceof Map)
   ) {
     return;
   }
 
-  const observers =
-    unit.crewObservation
-      .observers ?? {};
+  const observers = unit.crewObservation.observers ?? {};
 
-  Object.entries(
-    observers,
-  ).forEach(
-    ([
-      crewRole,
-      observer,
-    ]) => {
-      const style =
-        CREW_OBSERVATION_STYLES[
-          crewRole
-        ];
+  Object.entries(observers).forEach(([crewRole, observer]) => {
+    const style = CREW_OBSERVATION_STYLES[crewRole];
 
-      if (
-        !style ||
-        !observer ||
-        observer.enabled === false ||
-        observer.observing !== true ||
-        !Number.isFinite(
-          observer.direction,
-        )
-      ) {
-        return;
-      }
+    if (
+      !style ||
+      !observer ||
+      observer.enabled === false ||
+      observer.observing !== true ||
+      !Number.isFinite(observer.direction)
+    ) {
+      return;
+    }
 
-      drawObservationCone(
-        context,
-        point,
-        observer.direction,
-        finiteOrDefault(
-          observer.fieldOfView,
-          Math.PI / 2,
-        ),
-        getObserverRadius(
-          unit,
-          observer,
-          hexRadius,
-          crewRole,
-        ),
-        style.stroke,
-        style.fill,
-      );
-    },
-  );
+    drawHexViewArea({
+      context,
+      viewHexes: buildObserverView(
+        unit,
+        observer,
+        crewRole,
+        terrain,
+        smokeAreas,
+      ),
+      hexToWorld,
+      hexRadius,
+      strokeStyle: style.stroke,
+      fillStyle: style.fill,
+    });
+  });
 }
 
 function isCpsDisplayActive(unit) {
-  const sight =
-    unit.crewObservation
-      ?.commanderIndependentSight;
+  const sight = unit.crewObservation?.commanderIndependentSight;
 
   return (
     unit.side === "friendly" &&
     !unit.destroyed &&
     sight?.operational === true &&
     sight.active === true &&
-    (
-      sight.locked === true ||
-      sight.tracking === true ||
-      Number.isFinite(
-        sight.direction,
-      )
-    )
+    Number.isFinite(sight.direction)
   );
 }
 
 function drawCpsObservationArea(
   context,
   unit,
-  point,
   hexRadius,
+  hexToWorld,
+  terrain,
+  smokeAreas,
 ) {
-  if (!isCpsDisplayActive(unit)) {
+  if (!isCpsDisplayActive(unit) || !(terrain instanceof Map)) {
     return;
   }
 
-  const sight =
-    unit.crewObservation
-      .commanderIndependentSight;
+  const sight = unit.crewObservation.commanderIndependentSight;
+  const viewHexes = calculateViewHexes({
+    origin: {
+      column: unit.column,
+      row: unit.row,
+    },
+    direction: sight.direction,
+    fieldOfView: finiteOrDefault(sight.fieldOfView, Math.PI / 3),
+    maximumRange:
+      getObservationVisualRange(unit, { role: "commander-cps" }) *
+      nonNegativeOrDefault(sight.range, 1.18),
+    terrain,
+    smokeAreas,
+  });
 
-  const cpsRadius =
-    hexRadius *
-    getObservationVisualRange(
-      unit,
-      {
-        role: "commander-cps",
-      },
-    ) *
-    nonNegativeOrDefault(
-      sight.range,
-      1.18,
-    );
-
-  drawObservationCone(
+  drawHexViewArea({
     context,
-    point,
-    sight.direction,
-    finiteOrDefault(
-      sight.fieldOfView,
-      Math.PI / 3,
-    ),
-    cpsRadius,
-    "rgba(255, 240, 145, 0.95)",
-    "rgba(255, 240, 145, 0.08)",
-    [],
-  );
-
-  if (
-    Number.isFinite(
-      sight.targetDirection,
-    ) &&
-    (
-      sight.locked !== true ||
-      sight.tracking === true
-    )
-  ) {
-    context.save();
-    context.globalAlpha =
-      sight.locked ? 0.35 : 0.8;
-    context.strokeStyle =
-      "rgba(92, 226, 255, 0.95)";
-    context.fillStyle =
-      "rgba(92, 226, 255, 0.95)";
-    context.lineWidth = 2;
-    context.setLineDash([6, 5]);
-    context.beginPath();
-    context.moveTo(point.x, point.y);
-    const targetX =
-      point.x +
-      Math.cos(sight.targetDirection) *
-        cpsRadius;
-    const targetY =
-      point.y +
-      Math.sin(sight.targetDirection) *
-        cpsRadius;
-    context.lineTo(targetX, targetY);
-    context.stroke();
-    context.setLineDash([]);
-    context.beginPath();
-    context.arc(targetX, targetY, 4, 0, Math.PI * 2);
-    context.fill();
-    context.restore();
-  }
+    viewHexes,
+    hexToWorld,
+    hexRadius,
+    strokeStyle: "rgba(255, 240, 145, 0.95)",
+    fillStyle: "rgba(255, 240, 145, 0.08)",
+  });
 }
 
 function isReconActive(unit) {
@@ -1202,6 +1181,9 @@ function drawObservationAreas(
   unit,
   point,
   hexRadius,
+  hexToWorld,
+  terrain,
+  smokeAreas,
 ) {
   if (
     unit.side !== "friendly" ||
@@ -1220,15 +1202,19 @@ function drawObservationAreas(
   drawCrewObservationAreas(
     context,
     unit,
-    point,
     hexRadius,
+    hexToWorld,
+    terrain,
+    smokeAreas,
   );
 
   drawCpsObservationArea(
     context,
     unit,
-    point,
     hexRadius,
+    hexToWorld,
+    terrain,
+    smokeAreas,
   );
 }
 
@@ -1531,6 +1517,8 @@ export function drawUnits({
   hexToWorld,
   bounds,
   isPointVisible,
+  terrain,
+  smokeAreas = [],
 }) {
   const runtimeUnits =
     Array.isArray(units)
@@ -1585,12 +1573,20 @@ export function drawUnits({
         return;
       }
 
-      drawObservationAreas(
-        context,
-        unit,
-        point,
-        hexRadius,
-      );
+      if (
+        unit.id === selectedUnitId ||
+        (developerMode && unit.id === debugSelectedUnitId)
+      ) {
+        drawObservationAreas(
+          context,
+          unit,
+          point,
+          hexRadius,
+          hexToWorld,
+          terrain,
+          smokeAreas,
+        );
+      }
 
       if (
         unit.id ===
