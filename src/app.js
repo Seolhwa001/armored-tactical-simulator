@@ -2,7 +2,7 @@
 // ATS PROJECT
 // File      : src/app.js
 // Sprint    : 3.9.1
-// Revision  : R5
+// Revision  : R6
 // Build     : 2026-08-06
 // Type      : PARTIAL PATCH
 // Purpose   : Runtime-safe battle reset, panel synchronization, and return confirmation
@@ -741,6 +741,9 @@ firePanel = createFirePanel({
     updateSummary();
     render();
   },
+
+  onVisibilityChanged:
+    refreshFogAndRender,
 
   onMessage:
     setMessage,
