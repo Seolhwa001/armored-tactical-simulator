@@ -2,10 +2,10 @@
 // ATS PROJECT
 // File      : src/engine/combat.js
 // Sprint    : 3.9.x
-// Revision  : R4
+// Revision  : R5
 // Build     : 2026-08-06
 // Type      : PARTIAL PATCH
-// Purpose   : Smoke lifecycle and complete optical line-of-sight blocking
+// Purpose   : Smoke lifecycle with radius-aware optical line-of-sight blocking
 // ============================================================
 
 const DIRECT_FIRE_AMMUNITION = new Set([
@@ -133,6 +133,65 @@ function cubeRound(cube) {
   return { x, y, z };
 }
 
+
+function getHexesWithinRadius(center, radius) {
+  const safeRadius = Math.max(
+    0,
+    Math.floor(
+      Number.isFinite(radius)
+        ? radius
+        : 0,
+    ),
+  );
+
+  const centerCube =
+    offsetToCube(center);
+
+  const hexes = [];
+
+  for (
+    let xOffset = -safeRadius;
+    xOffset <= safeRadius;
+    xOffset += 1
+  ) {
+    const minimumYOffset =
+      Math.max(
+        -safeRadius,
+        -xOffset - safeRadius,
+      );
+
+    const maximumYOffset =
+      Math.min(
+        safeRadius,
+        -xOffset + safeRadius,
+      );
+
+    for (
+      let yOffset = minimumYOffset;
+      yOffset <= maximumYOffset;
+      yOffset += 1
+    ) {
+      const zOffset =
+        -xOffset - yOffset;
+
+      hexes.push(
+        cubeToOffset({
+          x:
+            centerCube.x + xOffset,
+
+          y:
+            centerCube.y + yOffset,
+
+          z:
+            centerCube.z + zOffset,
+        }),
+      );
+    }
+  }
+
+  return hexes;
+}
+
 function getHexLine(start, end) {
   const first = offsetToCube(start);
   const second = offsetToCube(end);
@@ -167,13 +226,28 @@ export function prepareActiveSmokeAreas(
           area.expiresTurn >= turn),
       )
     : [];
+  const smokeHexKeys =
+    new Set();
+
+  activeSmokeAreas.forEach(
+    (area) => {
+      getHexesWithinRadius(
+        area,
+        area.radius,
+      ).forEach((hex) => {
+        smokeHexKeys.add(
+          smokeKey(
+            hex.column,
+            hex.row,
+          ),
+        );
+      });
+    },
+  );
+
   return {
     activeSmokeAreas,
-    smokeHexKeys: new Set(
-      activeSmokeAreas.map((area) =>
-        smokeKey(area.column, area.row),
-      ),
-    ),
+    smokeHexKeys,
   };
 }
 
