@@ -2,7 +2,7 @@
 // ATS PROJECT
 // File      : src/engine/detection.js
 // Sprint    : 3.9.1
-// Revision  : R11
+// Revision  : R12
 // Build     : 2026-08-05
 // Type      : PATCHED FULL REPLACEMENT
 // Purpose   : Directional detection with smoke diagnostics and temporary role range balance
@@ -564,7 +564,7 @@ function getSensorVisualRange(
   return DEFAULT_VISUAL_RANGE;
 }
 
-function getObservationVisualRange(
+export function getObservationVisualRange(
   observer,
   observation,
 ) {
