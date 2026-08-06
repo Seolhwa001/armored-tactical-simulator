@@ -2,7 +2,7 @@
 // ATS PROJECT
 // File      : src/ui/firePanel.js
 // Sprint    : 3.9.2
-// Revision  : R8
+// Revision  : R9
 // Build     : 2026-08-05
 // Type      : PARTIAL PATCH
 // Purpose   : Fire UI with recon-by-fire targeting and mobile status fields
@@ -559,6 +559,7 @@ export function createFirePanel({
   onFireEffect,
   onRemoveFireEffects,
   onStateChanged,
+  onVisibilityChanged,
   onMessage,
 }) {
   const procedure = {
@@ -680,7 +681,19 @@ export function createFirePanel({
       );
     }
 
-    onStateChanged();
+    const smokeCreated =
+      result.shotResult
+        ?.smokeCreated === true;
+
+    if (
+      smokeCreated &&
+      typeof onVisibilityChanged ===
+        "function"
+    ) {
+      onVisibilityChanged();
+    } else {
+      onStateChanged();
+    }
 
     const resultMessage =
       formatShotResult(
