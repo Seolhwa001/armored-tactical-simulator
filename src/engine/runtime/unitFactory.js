@@ -6,6 +6,7 @@ import { createCrewObservation } from "./crewFactory.js";
 import { createRuntimeHealth } from "./healthFactory.js";
 import { createRuntimeProtection } from "./protectionFactory.js";
 import { createRuntimeSensors } from "./sensorFactory.js";
+import { CREW_ROLES, HATCH_STATES } from "../contracts/index.js";
 
 function createVehicleSmokeState({
   unitData,
@@ -95,7 +96,15 @@ export function createRuntimeUnit(unitData) {
 
     hatchState:
       isTank
-        ? "open"
+        ? HATCH_STATES.OPEN
+        : null,
+
+    crewHatches:
+      isTank
+        ? {
+            [CREW_ROLES.COMMANDER]: HATCH_STATES.OPEN,
+            [CREW_ROLES.LOADER]: HATCH_STATES.OPEN,
+          }
         : null,
 
     vehicleSmoke:
