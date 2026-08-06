@@ -70,13 +70,6 @@ export function createCommandController({
       return false;
     }
 
-    if (command.id === "recon") {
-      commandPanel.activateRecon();
-      refreshFogAndRender();
-
-      return true;
-    }
-
     if (
       typeof command.execute ===
         "function" &&

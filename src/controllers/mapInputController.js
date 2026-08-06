@@ -37,9 +37,6 @@ const DETECTION_CREW_ROLE_LABELS =
     "commander-cps":
       "CPS",
 
-    "crew-recon":
-      "360도 정찰",
-
     "recon-by-fire":
       "화력수색",
   });
