@@ -2,10 +2,10 @@
 // ATS PROJECT
 // File      : src/engine/combat.js
 // Sprint    : 3.9.x
-// Revision  : R3
-// Build     : 2026-08-05
-// Type      : PATCHED FULL REPLACEMENT
-// Purpose   : Smoke creation, lifetime, and shared occlusion contract
+// Revision  : R4
+// Build     : 2026-08-06
+// Type      : PARTIAL PATCH
+// Purpose   : Smoke lifecycle and complete optical line-of-sight blocking
 // ============================================================
 
 const DIRECT_FIRE_AMMUNITION = new Set([
@@ -193,6 +193,8 @@ export function getSmokeOcclusion({
       smokeHexCount: 0,
       visualRangeFactor: 1,
       identificationRangeFactor: 1,
+      blocksOpticalSight: false,
+      blockingSmokeHex: null,
     };
   }
   const prepared = smokeHexKeys instanceof Set
@@ -217,6 +219,21 @@ export function getSmokeOcclusion({
     if (prepared.smokeHexKeys.has(key)) intersectingKeys.add(key);
   });
   const smokeHexCount = intersectingKeys.size;
+
+  const blockingSmokeHex =
+    line.find((hex, index) => {
+      if (index === 0 || index === line.length - 1) {
+        return false;
+      }
+
+      return prepared.smokeHexKeys.has(
+        smokeKey(hex.column, hex.row),
+      );
+    }) ?? null;
+
+  const blocksOpticalSight =
+    blockingSmokeHex !== null;
+
   let visualRangeFactor =
     Math.pow(SMOKE_VISUAL_FACTOR, smokeHexCount);
   let identificationRangeFactor =
@@ -233,6 +250,14 @@ export function getSmokeOcclusion({
     smokeHexCount,
     visualRangeFactor: Math.max(0.15, visualRangeFactor),
     identificationRangeFactor: Math.max(0.08, identificationRangeFactor),
+    blocksOpticalSight,
+    blockingSmokeHex:
+      blockingSmokeHex
+        ? {
+            column: blockingSmokeHex.column,
+            row: blockingSmokeHex.row,
+          }
+        : null,
   };
 }
 
@@ -832,7 +857,7 @@ export function deployVehicleSmoke(
       vehicleSmoke.maximumUses,
 
     reason:
-      `차체 전방에 자체연막을 전개했습니다. ` +
+      `포탑 전방에 자체연막을 전개했습니다. ` +
       `남은 횟수 ${vehicleSmoke.remainingUses}` +
       `/${vehicleSmoke.maximumUses}`,
   };

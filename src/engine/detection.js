@@ -2,10 +2,10 @@
 // ATS PROJECT
 // File      : src/engine/detection.js
 // Sprint    : 3.9.1
-// Revision  : R12
-// Build     : 2026-08-05
-// Type      : PATCHED FULL REPLACEMENT
-// Purpose   : Directional detection with smoke diagnostics and temporary role range balance
+// Revision  : R13
+// Build     : 2026-08-06
+// Type      : PARTIAL PATCH
+// Purpose   : Directional detection with shared ranges and smoke line blocking
 // ============================================================
 
 import {
@@ -755,7 +755,10 @@ function evaluateDetectionCandidate(
   let stage =
     DETECTION_STAGES.HIDDEN;
 
-  if (
+  if (smokeOcclusion.blocksOpticalSight) {
+    stage =
+      DETECTION_STAGES.HIDDEN;
+  } else if (
     distance <=
     effectiveIdentificationRange
   ) {
@@ -893,6 +896,12 @@ function enrichCandidateDiagnostics(
 
       if (
         rejectionReason === null &&
+        smokeOcclusion.blocksOpticalSight
+      ) {
+        rejectionReason =
+          "SMOKE_BLOCKED";
+      } else if (
+        rejectionReason === null &&
         distance > effectiveVisualRange
       ) {
         rejectionReason =
@@ -921,6 +930,10 @@ function enrichCandidateDiagnostics(
           smokeOcclusion.visualRangeFactor,
         smokeIdentificationFactor:
           smokeOcclusion.identificationRangeFactor,
+        smokeBlocked:
+          smokeOcclusion.blocksOpticalSight === true,
+        blockingSmokeHex:
+          smokeOcclusion.blockingSmokeHex ?? null,
         candidateStage,
         accepted:
           rejectionReason === null,
