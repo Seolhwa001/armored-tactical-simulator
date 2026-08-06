@@ -1,37 +1,80 @@
 // ============================================================
 // ATS PROJECT
 // File      : src/engine/crewActions.js
-// Sprint    : 4
-// Purpose   : Crew hatch commands backed by persistent Runtime actions
+// Sprint    : 3.9.1
+// Revision  : R1
+// Build     : 2026-08-05
+// Type      : NEW FILE
+// Purpose   : Crew hatch state actions
 // ============================================================
 
-import { CREW_ROLES, HATCH_STATES } from "./contracts/index.js";
-import { beginCrewHatchTransition } from "./runtime/crewHatchRuntime.js";
+import {
+  synchronizeCrewObservationDirections,
+} from "./actions.js";
 
-export { HATCH_STATES };
+export const HATCH_STATES = Object.freeze({
+  OPEN: "open",
+  CLOSED: "closed",
+});
 
-export function setCrewHatchState(unit, role, hatchState, turn = null) {
-  const result = beginCrewHatchTransition(unit, role, hatchState, { turn });
-  if (!result.success) return result;
+export function setLoaderHatchState(
+  unit,
+  hatchState,
+  turn = null,
+) {
+  if (
+    !unit ||
+    unit.destroyed ||
+    !unit.crewObservation
+  ) {
+    return {
+      success: false,
+      reason:
+        "탄약수 해치를 조작할 수 없습니다.",
+    };
+  }
 
-  unit.command = hatchState === HATCH_STATES.OPEN
-    ? `${role === CREW_ROLES.COMMANDER ? "전차장" : "탄약수"} 해치 개방 중`
-    : `${role === CREW_ROLES.COMMANDER ? "전차장" : "탄약수"} 해치 폐쇄 중`;
+  if (
+    hatchState !== HATCH_STATES.OPEN &&
+    hatchState !== HATCH_STATES.CLOSED
+  ) {
+    return {
+      success: false,
+      reason:
+        "올바르지 않은 해치 상태입니다.",
+    };
+  }
+
+  if (
+    hatchState === HATCH_STATES.OPEN &&
+    unit.fireControl?.loading === true
+  ) {
+    return {
+      success: false,
+      reason:
+        "장전 중에는 탄약수 해치를 열 수 없습니다.",
+    };
+  }
+
+  unit.hatchState =
+    hatchState;
+
+  synchronizeCrewObservationDirections(
+    unit,
+    turn,
+  );
+
+  unit.command =
+    hatchState === HATCH_STATES.OPEN
+      ? "탄약수 해치 개방"
+      : "탄약수 해치 폐쇄";
 
   return {
-    ...result,
-    message: result.completed
-      ? "해치 상태가 이미 적용되어 있습니다."
-      : hatchState === HATCH_STATES.OPEN
-        ? "해치 개방을 시작했습니다."
-        : "해치 폐쇄를 시작했습니다.",
+    success: true,
+    hatchState,
+    message:
+      hatchState === HATCH_STATES.OPEN
+        ? "탄약수 해치를 열었습니다."
+        : "탄약수 해치를 닫았습니다.",
   };
-}
-
-export function setLoaderHatchState(unit, hatchState, turn = null) {
-  return setCrewHatchState(unit, CREW_ROLES.LOADER, hatchState, turn);
-}
-
-export function setCommanderHatchState(unit, hatchState, turn = null) {
-  return setCrewHatchState(unit, CREW_ROLES.COMMANDER, hatchState, turn);
 }

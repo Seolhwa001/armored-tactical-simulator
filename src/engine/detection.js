@@ -22,18 +22,6 @@ import {
   prepareActiveSmokeAreas,
 } from "./combat.js";
 
-import {
-  synchronizeDetectedEnemyContact,
-} from "./runtime/detectionContactBridge.js";
-
-import {
-  synchronizeCrewVision,
-} from "./runtime/crewVisionRuntime.js";
-
-import {
-  VISION_RANGE_MODES,
-} from "./contracts/index.js";
-
 export {
   getHexDistance,
 } from "./hexGeometry.js";
@@ -215,10 +203,6 @@ function evaluateCrewObserver(
           .identificationFactor,
         DEFAULT_IDENTIFICATION_FACTOR,
       ),
-
-    rangeMode:
-      observer.rangeMode ??
-      VISION_RANGE_MODES.LEGACY_MULTIPLIER,
   };
 }
 
@@ -278,10 +262,6 @@ function evaluateCommanderSight(
         sight.identificationFactor,
         1.2,
       ),
-
-    rangeMode:
-      sight.rangeMode ??
-      VISION_RANGE_MODES.LEGACY_MULTIPLIER,
   };
 }
 
@@ -308,8 +288,6 @@ function getObservationCandidates(
   observer,
   enemy,
 ) {
-  synchronizeCrewVision(observer);
-
   const targetDirection =
     getHexDirection(
       observer,
@@ -410,9 +388,6 @@ function getObservationCandidates(
               ?.identificationFactor,
             DEFAULT_IDENTIFICATION_FACTOR,
           ),
-        rangeMode:
-          crewObserver?.rangeMode ??
-          VISION_RANGE_MODES.LEGACY_MULTIPLIER,
         directionAccepted:
           Boolean(candidate),
         rejectionReason,
@@ -500,9 +475,6 @@ function getObservationCandidates(
         sight?.identificationFactor,
         1.2,
       ),
-    rangeMode:
-      sight?.rangeMode ??
-      VISION_RANGE_MODES.LEGACY_MULTIPLIER,
     directionAccepted:
       Boolean(commanderSight),
     rejectionReason:
@@ -749,25 +721,17 @@ function evaluateDetectionCandidate(
       turn,
     ) / 25;
 
-  const absoluteRange =
-    observation.rangeMode ===
-      VISION_RANGE_MODES.ABSOLUTE_HEXES;
-
   const baseEffectiveVisualRange =
     Math.max(
       0,
-      (absoluteRange
-        ? observerRange
-        : visualRange * observerRange) -
+      visualRange * observerRange -
         concealmentPenalty,
     );
 
   const baseEffectiveIdentificationRange =
     Math.max(
       0,
-      (absoluteRange
-        ? observerRange * DEFAULT_IDENTIFICATION_RATIO
-        : identificationRange * observerRange) *
+      identificationRange * observerRange *
         identificationFactor -
         concealmentPenalty,
     );
@@ -896,17 +860,11 @@ function enrichCandidateDiagnostics(
           DEFAULT_IDENTIFICATION_FACTOR,
         );
 
-      const absoluteRange =
-        diagnostic.rangeMode ===
-          VISION_RANGE_MODES.ABSOLUTE_HEXES;
-
       const baseEffectiveVisualRange =
         matchingResult?.baseEffectiveVisualRange ??
         Math.max(
           0,
-          (absoluteRange
-            ? observerRange
-            : visualRange * observerRange) -
+          visualRange * observerRange -
             concealmentPenalty,
         );
 
@@ -914,9 +872,7 @@ function enrichCandidateDiagnostics(
         matchingResult?.baseEffectiveIdentificationRange ??
         Math.max(
           0,
-          (absoluteRange
-            ? observerRange * DEFAULT_IDENTIFICATION_RATIO
-            : identificationRange * observerRange) *
+          identificationRange * observerRange *
             identificationFactor -
             concealmentPenalty,
         );
@@ -1559,18 +1515,6 @@ export function updateDetection(
           row:
             enemy.row,
         };
-
-        synchronizeDetectedEnemyContact({
-          runtimeScenario,
-          enemy,
-          stage: bestStage,
-          observerRole: bestObserverRole,
-          distanceHexes:
-            Number.isFinite(bestDistance)
-              ? bestDistance
-              : null,
-          turn,
-        });
       }
 
       clearExpiredExposure(

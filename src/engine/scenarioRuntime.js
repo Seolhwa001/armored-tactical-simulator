@@ -14,14 +14,6 @@ import {
   createRuntimeUnit,
 } from "./runtime/unitFactory.js";
 
-import {
-  createContactStore,
-} from "./runtime/contactStore.js";
-
-import {
-  createContactReportQueue,
-} from "./runtime/contactReportQueue.js";
-
 export {
   CREW_ROLES,
   HUNTER_KILLER_STATES,
@@ -61,12 +53,6 @@ export function loadScenario(
       ...source.playerUnits,
       ...source.enemyUnits,
     ].map(createRuntimeUnit),
-
-    contacts:
-      createContactStore(),
-
-    contactReports:
-      createContactReportQueue(),
 
     events: (
       source.events ?? []
