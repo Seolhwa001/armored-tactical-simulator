@@ -2,10 +2,10 @@
 // ATS PROJECT
 // File      : src/render/fogRenderer.js
 // Sprint    : 3.9.x
-// Revision  : R1
-// Build     : 2026-08-05
-// Type      : PATCHED FULL REPLACEMENT
-// Purpose   : Fog visibility with shared smoke occlusion
+// Revision  : R2
+// Build     : 2026-08-06
+// Type      : PARTIAL PATCH
+// Purpose   : Directional fog visibility using shared observation ranges
 // ============================================================
 
 import {
@@ -14,16 +14,177 @@ import {
 } from "../engine/combat.js";
 
 import {
+  getObservationVisualRange,
+} from "../engine/detection.js";
+
+import {
+  getHexDirection,
   getHexDistance,
 } from "../engine/hexGeometry.js";
+
+import {
+  normalizeAngle,
+} from "../engine/mathUtils.js";
 
 function terrainKey(column, row) {
   return `${column},${row}`;
 }
 
-function getObservationRange(unit) {
-  if (unit.action?.type === "recon") return 10;
-  return 7;
+function finiteOrDefault(value, fallback) {
+  return Number.isFinite(value)
+    ? value
+    : fallback;
+}
+
+function nonNegativeOrDefault(value, fallback) {
+  return Math.max(
+    0,
+    finiteOrDefault(value, fallback),
+  );
+}
+
+function getAngleDifference(first, second) {
+  return Math.abs(
+    normalizeAngle(
+      finiteOrDefault(first, 0) -
+      finiteOrDefault(second, 0),
+    ),
+  );
+}
+
+function createObservationCapability({
+  unit,
+  role,
+  source,
+  defaultFieldOfView,
+  defaultRangeFactor,
+}) {
+  if (
+    !source ||
+    source.enabled === false ||
+    source.observing !== true ||
+    !Number.isFinite(source.direction)
+  ) {
+    return null;
+  }
+
+  return {
+    role,
+    direction: source.direction,
+    fieldOfView: Math.max(
+      0.01,
+      finiteOrDefault(
+        source.fieldOfView,
+        defaultFieldOfView,
+      ),
+    ),
+    range:
+      getObservationVisualRange(
+        unit,
+        { role },
+      ) *
+      nonNegativeOrDefault(
+        source.range,
+        defaultRangeFactor,
+      ),
+  };
+}
+
+function getActiveObservationCapabilities(unit) {
+  const capabilities = [];
+  const observers =
+    unit.crewObservation?.observers ?? {};
+
+  Object.entries(observers).forEach(
+    ([role, observer]) => {
+      const capability =
+        createObservationCapability({
+          unit,
+          role,
+          source: observer,
+          defaultFieldOfView: Math.PI / 2,
+          defaultRangeFactor: 1,
+        });
+
+      if (capability) {
+        capabilities.push(capability);
+      }
+    },
+  );
+
+  const sight =
+    unit.crewObservation
+      ?.commanderIndependentSight;
+
+  if (
+    sight?.operational === true &&
+    sight.active === true
+  ) {
+    const capability =
+      createObservationCapability({
+        unit,
+        role: "commander-cps",
+        source: {
+          ...sight,
+          enabled: true,
+          observing: true,
+        },
+        defaultFieldOfView: Math.PI / 3,
+        defaultRangeFactor: 1.18,
+      });
+
+    if (capability) {
+      capabilities.push(capability);
+    }
+  }
+
+  if (
+    unit.action?.type === "recon" ||
+    unit.persistentAction?.type === "recon"
+  ) {
+    capabilities.push({
+      role: "crew-recon",
+      direction: 0,
+      fieldOfView: Math.PI * 2,
+      range: getObservationVisualRange(
+        unit,
+        { role: "crew-recon" },
+      ),
+    });
+  }
+
+  return capabilities;
+}
+
+function isHexWithinCapability(
+  unit,
+  hex,
+  capability,
+) {
+  const distance =
+    getHexDistance(unit, hex);
+
+  if (distance > capability.range) {
+    return false;
+  }
+
+  if (distance === 0) {
+    return true;
+  }
+
+  if (capability.fieldOfView >= Math.PI * 2) {
+    return true;
+  }
+
+  const targetDirection =
+    getHexDirection(unit, hex);
+
+  return (
+    getAngleDifference(
+      targetDirection,
+      capability.direction,
+    ) <= capability.fieldOfView / 2
+  );
 }
 
 export function createFogState() {
@@ -61,14 +222,34 @@ export function updateFog(
       !unit.destroyed,
     )
     .forEach((unit) => {
-      const range = getObservationRange(unit);
+      const capabilities =
+        getActiveObservationCapabilities(unit);
+
+      if (capabilities.length === 0) {
+        return;
+      }
+
       terrain.forEach((hex) => {
-        const distance = getHexDistance(unit, hex);
-        if (distance > range) return;
+        const matchingCapabilities =
+          capabilities.filter((capability) =>
+            isHexWithinCapability(
+              unit,
+              hex,
+              capability,
+            ),
+          );
+
+        if (matchingCapabilities.length === 0) {
+          return;
+        }
+
         const cacheKey =
           `${unit.id ?? `${unit.column},${unit.row}`}>` +
           terrainKey(hex.column, hex.row);
-        let occlusion = visibilityCache.get(cacheKey);
+
+        let occlusion =
+          visibilityCache.get(cacheKey);
+
         if (!occlusion) {
           occlusion = getSmokeOcclusion({
             ...smokeContext,
@@ -78,16 +259,33 @@ export function updateFog(
           });
           visibilityCache.set(cacheKey, occlusion);
         }
-        const effectiveRange =
-          range * occlusion.visualRangeFactor;
-        if (distance > effectiveRange) return;
-        const key = terrainKey(hex.column, hex.row);
+
+        const distance =
+          getHexDistance(unit, hex);
+
+        const visibleThroughSmoke =
+          matchingCapabilities.some(
+            (capability) =>
+              distance <=
+              capability.range *
+                occlusion.visualRangeFactor,
+          );
+
+        if (!visibleThroughSmoke) {
+          return;
+        }
+
+        const key =
+          terrainKey(hex.column, hex.row);
+
         nextCurrent.add(key);
         fog.explored.add(key);
       });
     });
 
-  let changed = previousCurrent.size !== nextCurrent.size;
+  let changed =
+    previousCurrent.size !== nextCurrent.size;
+
   if (!changed) {
     for (const key of nextCurrent) {
       if (!previousCurrent.has(key)) {
@@ -96,8 +294,13 @@ export function updateFog(
       }
     }
   }
+
   fog.current = nextCurrent;
-  if (changed) fog.version += 1;
+
+  if (changed) {
+    fog.version += 1;
+  }
+
   return changed;
 }
 

@@ -2,7 +2,7 @@
 // ATS PROJECT
 // File      : src/render/unitRenderer.js
 // Sprint    : 3.9.1
-// Revision  : R11
+// Revision  : R12
 // Build     : 2026-08-05
 // Type      : PATCHED FULL REPLACEMENT
 // Purpose   : Unit rendering with separate control and debug selections
@@ -18,6 +18,7 @@ import {
 
 import {
   DETECTION_STAGES,
+  getObservationVisualRange,
   isUnitVisible,
 } from "../engine/detection.js";
 
@@ -133,10 +134,16 @@ function getObserverRadius(
   unit,
   observer,
   hexRadius,
+  role = null,
 ) {
   return (
     hexRadius *
-    getBaseVisualRange(unit) *
+    getObservationVisualRange(
+      unit,
+      {
+        role,
+      },
+    ) *
     nonNegativeOrDefault(
       observer.range,
       1,
@@ -1028,6 +1035,7 @@ function drawCrewObservationAreas(
           unit,
           observer,
           hexRadius,
+          crewRole,
         ),
         style.stroke,
         style.fill,
@@ -1072,7 +1080,12 @@ function drawCpsObservationArea(
 
   const cpsRadius =
     hexRadius *
-    getBaseVisualRange(unit) *
+    getObservationVisualRange(
+      unit,
+      {
+        role: "commander-cps",
+      },
+    ) *
     nonNegativeOrDefault(
       sight.range,
       1.18,
