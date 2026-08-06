@@ -2,10 +2,10 @@
 // ATS PROJECT
 // File      : src/engine/actions.js
 // Sprint    : 3.9.2
-// Revision  : R9
+// Revision  : R10
 // Build     : 2026-08-05
 // Type      : PARTIAL PATCH
-// Purpose   : Directed-action alignment start and selectable CPS modes
+// Purpose   : Stable tracked-target loss cleanup and directed actions
 // ============================================================
 
 import {
@@ -53,6 +53,9 @@ const FIRE_STATES =
 
 const FIRE_PROCEDURE_STATES =
   Object.freeze({
+    STOPPED:
+      "stopped",
+
     READY_TO_FIRE:
       "ready-to-fire",
 
@@ -1782,6 +1785,42 @@ function updateReconByFireAction(
   return completed;
 }
 
+function clearLostTrackedFireTarget(
+  unit,
+  turn,
+) {
+  const fireControl =
+    unit.fireControl;
+
+  if (!fireControl) {
+    return;
+  }
+
+  fireControl.targetHex =
+    null;
+  fireControl.targetUnitId =
+    null;
+  fireControl.fireCommandIssued =
+    false;
+  fireControl.aiming =
+    false;
+  fireControl.aimStartedTurn =
+    null;
+  fireControl.gunnerAutonomous =
+    false;
+  fireControl.procedureState =
+    FIRE_PROCEDURE_STATES.STOPPED;
+  fireControl.procedureTurn =
+    turn;
+  fireControl.lastShotResult =
+    null;
+
+  if (!unit.destroyed) {
+    unit.command =
+      "표적 소실 / 사격 중지";
+  }
+}
+
 function synchronizeTrackedFireTarget(
   runtimeScenario,
   unit,
@@ -1807,17 +1846,10 @@ function synchronizeTrackedFireTarget(
       );
 
     if (!target) {
-      fireControl.targetHex =
-        null;
-
-      fireControl.targetUnitId =
-        null;
-
-      fireControl.aiming =
-        false;
-
-      fireControl.aimStartedTurn =
-        null;
+      clearLostTrackedFireTarget(
+        unit,
+        turn,
+      );
 
       return false;
     }
