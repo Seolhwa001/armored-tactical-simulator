@@ -34,9 +34,6 @@ export const DETECTION_STAGES =
     IDENTIFIED: 3,
   });
 
-const ACTION_RECON =
-  "recon";
-
 const DEFAULT_VISUAL_RANGE =
   7;
 
@@ -112,15 +109,6 @@ function getAbsoluteAngleDifference(
         0,
       ),
     ),
-  );
-}
-
-function isReconActive(unit) {
-  return (
-    unit.action?.type ===
-      ACTION_RECON ||
-    unit.persistentAction?.type ===
-      ACTION_RECON
   );
 }
 
@@ -262,25 +250,6 @@ function evaluateCommanderSight(
         sight.identificationFactor,
         1.2,
       ),
-  };
-}
-
-function createReconObservationCandidate(
-  unit,
-) {
-  if (!isReconActive(unit)) {
-    return null;
-  }
-
-  return {
-    role:
-      "crew-recon",
-
-    range:
-      RECON_RANGE_FACTOR,
-
-    identificationFactor:
-      RECON_IDENTIFICATION_FACTOR,
   };
 }
 
@@ -481,38 +450,6 @@ function getObservationCandidates(
       sightRejectionReason,
   });
 
-  const reconActive =
-    isReconActive(observer);
-
-  const reconCandidate =
-    createReconObservationCandidate(
-      observer,
-    );
-
-  if (reconCandidate) {
-    candidates.push(reconCandidate);
-  }
-
-  diagnostics.push({
-    role: "crew-recon",
-    sourceType: "crew-recon",
-    enabled: true,
-    observing: reconActive,
-    observerDirection: null,
-    targetDirection,
-    angleDifference:
-      reconActive ? 0 : null,
-    fieldOfView: Math.PI * 2,
-    range: RECON_RANGE_FACTOR,
-    identificationFactor:
-      RECON_IDENTIFICATION_FACTOR,
-    directionAccepted:
-      Boolean(reconCandidate),
-    rejectionReason:
-      reconActive
-        ? null
-        : "NOT_OBSERVING",
-  });
 
   candidates.diagnostics =
     diagnostics;

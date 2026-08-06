@@ -16,6 +16,8 @@ import {
 } from "./mathUtils.js";
 
 export const DEFAULT_FOREST_VISIBLE_DEPTH = 2;
+export const DEFAULT_OBSERVER_HEIGHT_METERS = 2.5;
+export const DEFAULT_ELEVATION_BLOCK_THRESHOLD_METERS = 0.5;
 
 export function toHexKey(column, row) {
   return `${column},${row}`;
@@ -123,11 +125,30 @@ function evaluateLineOfSight({
   terrain,
   smokeAreas,
   forestVisibleDepth,
+  observerHeightMeters,
+  elevationBlockThresholdMeters,
 }) {
   const line = getHexLine(origin, target);
   let forestDepth = 0;
+  const originTerrain = terrain.get(toHexKey(origin.column, origin.row));
 
-  // The origin never blocks its own view.
+  if (!originTerrain) {
+    return false;
+  }
+
+  const originGroundElevation = Number.isFinite(originTerrain.elevation)
+    ? originTerrain.elevation
+    : 0;
+  const observerEyeElevation = originGroundElevation + observerHeightMeters;
+  const blockingGroundElevation =
+    originGroundElevation + elevationBlockThresholdMeters;
+
+  // The origin never blocks its own view. The target hex can be seen, but an
+  // intervening ridge 0.5m or more above the vehicle's ground level blocks
+  // everything behind it. observerEyeElevation is retained as the common
+  // observer-height contract for later slope-based LOS refinement.
+  void observerEyeElevation;
+
   for (let index = 1; index < line.length; index += 1) {
     const hex = line[index];
     const isTarget = index === line.length - 1;
@@ -138,8 +159,17 @@ function evaluateLineOfSight({
     }
 
     if (isSmokeHex(smokeAreas, hex.column, hex.row)) {
-      // The smoke hex itself remains visible; everything behind it is blocked.
       return isTarget;
+    }
+
+    if (!isTarget) {
+      const elevation = Number.isFinite(terrainHex.elevation)
+        ? terrainHex.elevation
+        : 0;
+
+      if (elevation >= blockingGroundElevation) {
+        return false;
+      }
     }
 
     if (terrainHex.type === "forest") {
@@ -163,6 +193,8 @@ export function calculateViewHexes({
   terrain,
   smokeAreas = [],
   forestVisibleDepth = DEFAULT_FOREST_VISIBLE_DEPTH,
+  observerHeightMeters = DEFAULT_OBSERVER_HEIGHT_METERS,
+  elevationBlockThresholdMeters = DEFAULT_ELEVATION_BLOCK_THRESHOLD_METERS,
 }) {
   if (
     !origin ||
@@ -197,6 +229,8 @@ export function calculateViewHexes({
       terrain,
       smokeAreas,
       forestVisibleDepth,
+      observerHeightMeters,
+      elevationBlockThresholdMeters,
     })) {
       return;
     }
