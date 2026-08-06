@@ -2,10 +2,10 @@
 // ATS PROJECT
 // File      : src/app.js
 // Sprint    : 3.9.1
-// Revision  : R4
-// Build     : 2026-08-05
+// Revision  : R5
+// Build     : 2026-08-06
 // Type      : PARTIAL PATCH
-// Purpose   : Fire-panel recon targeting and Developer HUD integration
+// Purpose   : Runtime-safe battle reset, panel synchronization, and return confirmation
 // ============================================================
 
 import {
@@ -249,6 +249,10 @@ const elements = {
 
   projectInfoDialog: document.querySelector(
     "#project-info-dialog",
+  ),
+
+  returnMenuDialog: document.querySelector(
+    "#return-menu-dialog",
   ),
 
   difficultySelect: document.querySelector(
@@ -655,19 +659,32 @@ commandPanel = createCommandPanel({
   onCancelMovement:
     cancelUnitMovement,
 
-  onDeployVehicleSmoke(unit) {
+  onDeployVehicleSmoke() {
+    const runtimeScenario =
+      state.runtimeScenario;
+
+    const unit =
+      getSelectedUnit();
+
+    if (!runtimeScenario || !unit) {
+      return {
+        success: false,
+        reason:
+          "현재 전투의 자차를 찾을 수 없습니다.",
+      };
+    }
+
     const result =
       deployVehicleSmoke(
-        state.runtimeScenario,
+        runtimeScenario,
         unit,
         state.turn,
       );
 
-    if (!result.success) {
-      return result;
-    }
-
     updateSummary();
+    commandController
+      ?.refreshActivePanel();
+    developerHud?.render();
     render();
 
     return result;
@@ -903,6 +920,27 @@ function showScreen(name) {
   }
 }
 
+function synchronizeBattleUi(
+  preferredCategory =
+    state.activeCategory ??
+    "turret",
+) {
+  firePanel.reset();
+  commandController
+    ?.clearSelectedCommand();
+
+  state.selectedHex = null;
+
+  commandController
+    ?.selectCategory(
+      preferredCategory,
+    );
+
+  updateSummary();
+  developerHud?.render();
+  render();
+}
+
 function handleAction(action) {
   if (
     action === "open-battle"
@@ -910,15 +948,11 @@ function handleAction(action) {
     scenarioController
       .startScenario();
 
-    firePanel.reset();
-
     state.activeCategory =
-      null;
-
-    elements.commandOptions
-      .replaceChildren();
+      "turret";
 
     showScreen("battle");
+    synchronizeBattleUi("turret");
 
     setMessage(
       "새 전투를 시작했습니다.",
@@ -930,6 +964,27 @@ function handleAction(action) {
   if (
     action === "return-menu"
   ) {
+    elements.returnMenuDialog
+      ?.showModal();
+
+    return;
+  }
+
+  if (
+    action === "cancel-return-menu"
+  ) {
+    elements.returnMenuDialog
+      ?.close();
+
+    return;
+  }
+
+  if (
+    action === "confirm-return-menu"
+  ) {
+    elements.returnMenuDialog
+      ?.close();
+
     showScreen("menu");
 
     return;
@@ -938,13 +993,19 @@ function handleAction(action) {
   if (
     action === "restart-scenario"
   ) {
+    const activeCategory =
+      state.activeCategory ??
+      "turret";
+
     scenarioController
       .restartScenario();
 
+    synchronizeBattleUi(
+      activeCategory,
+    );
+
     scenarioController
       .centerCamera();
-
-    render();
 
     setMessage(
       "시나리오를 다시 시작했습니다.",
