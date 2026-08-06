@@ -12,6 +12,7 @@ import {
   executeDirectedAction,
 } from "../engine/fireControl.js";
 import { advanceCrewHatchTransitions } from "../engine/runtime/crewHatchRuntime.js";
+import { advanceCrewWatchSectors } from "../engine/runtime/crewWatchSectorRuntime.js";
 
 export function createTurnController({
   state,
@@ -347,6 +348,12 @@ export function createTurnController({
       .filter((unit) => !unit.destroyed && unit.crewHatchActions)
       .forEach((unit) => {
         advanceCrewHatchTransitions(unit, 1, processedTurn);
+      });
+
+    getUnits()
+      .filter((unit) => !unit.destroyed && unit.crewWatchSectors)
+      .forEach((unit) => {
+        advanceCrewWatchSectors(unit, 1, processedTurn);
       });
 
     actionResult.adjustedShots.forEach(
