@@ -107,6 +107,14 @@ export function createRuntimeUnit(unitData) {
           }
         : null,
 
+    crewHatchActions:
+      isTank
+        ? {
+            [CREW_ROLES.COMMANDER]: null,
+            [CREW_ROLES.LOADER]: null,
+          }
+        : null,
+
     vehicleSmoke:
       createVehicleSmokeState({
         unitData,
