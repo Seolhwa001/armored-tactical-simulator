@@ -5,3 +5,5 @@ export * from "./fireProcedureContract.js";
 export * from "./actionTimeContract.js";
 
 export * from "./visionContract.js";
+
+export * from "./watchSectorContract.js";
