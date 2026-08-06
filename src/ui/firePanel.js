@@ -2,10 +2,10 @@
 // ATS PROJECT
 // File      : src/ui/firePanel.js
 // Sprint    : 3.9.2
-// Revision  : R9
+// Revision  : R10
 // Build     : 2026-08-05
 // Type      : PARTIAL PATCH
-// Purpose   : Fire UI with recon-by-fire targeting and mobile status fields
+// Purpose   : Fire UI with fresh runtime unit lookup for every command
 // ============================================================
 
 import {
@@ -570,6 +570,37 @@ export function createFirePanel({
     targetUnitId: null,
   };
 
+  function getCurrentUnit() {
+    const unit =
+      getSelectedUnit();
+
+    if (
+      !unit ||
+      unit.destroyed ||
+      unit.side !== "friendly" ||
+      !unit.fireControl
+    ) {
+      return null;
+    }
+
+    return unit;
+  }
+
+  function requireCurrentUnit() {
+    const unit =
+      getCurrentUnit();
+
+    if (!unit) {
+      onMessage(
+        "현재 전투의 자차를 찾을 수 없습니다.",
+      );
+
+      render();
+    }
+
+    return unit;
+  }
+
   function synchronizeProcedure(unit) {
     const fireControl =
       unit.fireControl;
@@ -854,9 +885,19 @@ export function createFirePanel({
                 ammunition,
 
               onClick: () => {
+                const currentUnit =
+                  requireCurrentUnit();
+
+                if (!currentUnit) {
+                  return;
+                }
+
+                const currentFireControl =
+                  currentUnit.fireControl;
+
                 const success =
                   selectAmmunition(
-                    unit,
+                    currentUnit,
                     ammunition,
                   );
 
@@ -869,28 +910,28 @@ export function createFirePanel({
                 }
 
                 synchronizeProcedure(
-                  unit,
+                  currentUnit,
                 );
 
                 onStateChanged();
 
                 if (
-                  fireControl.loading
+                  currentFireControl.loading
                 ) {
                   onMessage(
                     `다음 장전탄을 ${label}(으)로 변경했습니다. ` +
                     `현재 장전 중인 ${getAmmunitionLabel(
-                      fireControl
+                      currentFireControl
                         .loadingAmmunition,
                     )}은 유지됩니다.`,
                   );
                 } else if (
-                  fireControl.loaded
+                  currentFireControl.loaded
                 ) {
                   onMessage(
                     `다음 장전탄을 ${label}(으)로 변경했습니다. ` +
                     `현재 장전된 ${getAmmunitionLabel(
-                      fireControl
+                      currentFireControl
                         .loadedAmmunition,
                     )}은 유지됩니다.`,
                   );
@@ -986,9 +1027,16 @@ export function createFirePanel({
             !canIssueFireCommand,
 
           onClick: () => {
+            const currentUnit =
+              requireCurrentUnit();
+
+            if (!currentUnit) {
+              return;
+            }
+
             const result =
               issueFireCommand(
-                unit,
+                currentUnit,
                 getTurn(),
               );
 
@@ -1091,15 +1139,28 @@ export function createFirePanel({
               .READY_TO_FIRE,
 
           onClick: () => {
+            const runtimeScenario =
+              getRuntimeScenario();
+
+            const currentUnit =
+              requireCurrentUnit();
+
+            if (
+              !runtimeScenario ||
+              !currentUnit
+            ) {
+              return;
+            }
+
             const result =
               fireSingleShot(
-                getRuntimeScenario(),
-                unit,
+                runtimeScenario,
+                currentUnit,
                 getTurn(),
                 {
                   moving:
                     isUnitMoving(
-                      unit,
+                      currentUnit,
                     ),
                 },
               );
@@ -1113,7 +1174,7 @@ export function createFirePanel({
             }
 
             handleFireResult(
-              unit,
+              currentUnit,
               result,
             );
           },
@@ -1135,15 +1196,28 @@ export function createFirePanel({
               .READY_TO_FIRE,
 
           onClick: () => {
+            const runtimeScenario =
+              getRuntimeScenario();
+
+            const currentUnit =
+              requireCurrentUnit();
+
+            if (
+              !runtimeScenario ||
+              !currentUnit
+            ) {
+              return;
+            }
+
             const result =
               enableAdjustedFire(
-                getRuntimeScenario(),
-                unit,
+                runtimeScenario,
+                currentUnit,
                 getTurn(),
                 {
                   moving:
                     isUnitMoving(
-                      unit,
+                      currentUnit,
                     ),
                 },
               );
@@ -1157,7 +1231,7 @@ export function createFirePanel({
             }
 
             handleFireResult(
-              unit,
+              currentUnit,
               result,
             );
           },
@@ -1181,10 +1255,20 @@ export function createFirePanel({
               .gunnerAutonomous,
 
           onClick: () => {
-            ceaseFire(unit);
+            const currentUnit =
+              requireCurrentUnit();
+
+            if (!currentUnit) {
+              return;
+            }
+
+            const currentFireControl =
+              currentUnit.fireControl;
+
+            ceaseFire(currentUnit);
 
             onRemoveFireEffects(
-              unit.id,
+              currentUnit.id,
             );
 
             reset();
@@ -1192,17 +1276,17 @@ export function createFirePanel({
             onStateChanged();
 
             const loadingMessage =
-              fireControl.loading
+              currentFireControl.loading
                 ? (
                     ` ${getAmmunitionLabel(
-                      fireControl
+                      currentFireControl
                         .loadingAmmunition,
                     )} 장전은 계속됩니다.`
                   )
-                : fireControl.loaded
+                : currentFireControl.loaded
                   ? (
                       ` 현재 장전탄 ${getAmmunitionLabel(
-                        fireControl
+                        currentFireControl
                           .loadedAmmunition,
                       )}은 유지됩니다.`
                     )
