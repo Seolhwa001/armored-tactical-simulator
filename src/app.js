@@ -559,6 +559,13 @@ function render(
 
         developerMode:
           state.developerMode,
+
+        terrain:
+          state.terrain,
+
+        smokeAreas:
+          state.runtimeScenario
+            ?.smokeAreas ?? [],
       });
 
       drawTargetPreview(
