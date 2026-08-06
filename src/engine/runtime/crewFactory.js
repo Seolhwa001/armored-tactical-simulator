@@ -2,10 +2,10 @@
 // ATS PROJECT
 // File      : src/engine/runtime/crewFactory.js
 // Sprint    : 3.9.1
-// Revision  : R3
-// Build     : 2026-08-05
-// Type      : PATCHED FULL REPLACEMENT
-// Purpose   : Crew observation factory using shared angle normalization
+// Revision  : R4
+// Build     : 2026-08-06
+// Type      : PARTIAL PATCH
+// Purpose   : Crew observation factory with role-specific observation sectors
 // ============================================================
 
 import {
@@ -138,7 +138,7 @@ function createCommanderSight(
     );
 
   const fieldOfView =
-    Math.PI / 3;
+    Math.PI / 4;
 
   const range =
     1.18;
@@ -250,7 +250,7 @@ export function createCrewObservation({
             safeHullDirection,
 
           fieldOfView:
-            Math.PI / 3,
+            Math.PI / 6,
 
           range:
             0.85,
