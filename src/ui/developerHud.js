@@ -67,9 +67,6 @@ const CREW_ROLE_LABELS =
     "commander-cps":
       "COMMANDER CPS",
 
-    "crew-recon":
-      "CREW RECON",
-
     "recon-by-fire":
       "RECON BY FIRE",
   });

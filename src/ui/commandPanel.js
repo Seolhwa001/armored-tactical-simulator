@@ -9,10 +9,6 @@
 // ============================================================
 
 import {
-  UNIT_ACTIONS,
-} from "../engine/constants/actionConstants.js";
-
-import {
   canAssignCrewObservation,
   CPS_MODES,
   designateHunterKillerTarget,
@@ -1224,14 +1220,6 @@ export function createCommandPanel({
             !commanderSightOperational,
         },
       ),
-      createCommandButton(
-        {
-          id: "recon",
-          label: "360도 정찰",
-          needsTarget: false,
-        },
-        onCommandSelected,
-      ),
     );
 
     if (!loaderAssignable) {
@@ -1540,37 +1528,6 @@ export function createCommandPanel({
     );
   }
 
-  function activateRecon() {
-    const unit =
-      getControllableUnit();
-
-    if (
-      !unit ||
-      unit.destroyed
-    ) {
-      return false;
-    }
-
-    setPersistentAction(
-      unit,
-      {
-        type:
-          UNIT_ACTIONS.RECON,
-
-        label:
-          "360도 정찰",
-      },
-      getTurn(),
-    );
-
-    onStateChanged();
-
-    onMessage(
-      "승무원 360도 정찰을 시작했습니다.",
-    );
-
-    return true;
-  }
 
   return {
     render(category) {
@@ -1598,7 +1555,6 @@ export function createCommandPanel({
       );
     },
 
-    activateRecon,
     showMessage,
 
     refresh(category) {
