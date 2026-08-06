@@ -135,6 +135,11 @@ export function createRuntimeUnit(unitData) {
           })
         : null,
 
+    crewWatchSectors:
+      isTank
+        ? {}
+        : null,
+
     action:
       createIdleAction(),
 
