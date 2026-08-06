@@ -3,7 +3,7 @@
 // File      : src/render/unitRenderer.js
 // Sprint    : 3.9.1
 // Revision  : R12
-// Build     : 2026-08-05
+// Build     : 2026-08-06
 // Type      : PATCHED FULL REPLACEMENT
 // Purpose   : Unit rendering with separate control and debug selections
 // ============================================================

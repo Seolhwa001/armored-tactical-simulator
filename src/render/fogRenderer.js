@@ -2,10 +2,10 @@
 // ATS PROJECT
 // File      : src/render/fogRenderer.js
 // Sprint    : 3.9.x
-// Revision  : R2
+// Revision  : R3
 // Build     : 2026-08-06
 // Type      : PARTIAL PATCH
-// Purpose   : Directional fog visibility using shared observation ranges
+// Purpose   : Directional fog visibility with complete smoke line blocking
 // ============================================================
 
 import {
@@ -264,6 +264,7 @@ export function updateFog(
           getHexDistance(unit, hex);
 
         const visibleThroughSmoke =
+          !occlusion.blocksOpticalSight &&
           matchingCapabilities.some(
             (capability) =>
               distance <=
