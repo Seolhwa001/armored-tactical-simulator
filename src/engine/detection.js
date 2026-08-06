@@ -22,6 +22,10 @@ import {
   prepareActiveSmokeAreas,
 } from "./combat.js";
 
+import {
+  synchronizeDetectedEnemyContact,
+} from "./runtime/detectionContactBridge.js";
+
 export {
   getHexDistance,
 } from "./hexGeometry.js";
@@ -1515,6 +1519,18 @@ export function updateDetection(
           row:
             enemy.row,
         };
+
+        synchronizeDetectedEnemyContact({
+          runtimeScenario,
+          enemy,
+          stage: bestStage,
+          observerRole: bestObserverRole,
+          distanceHexes:
+            Number.isFinite(bestDistance)
+              ? bestDistance
+              : null,
+          turn,
+        });
       }
 
       clearExpiredExposure(
