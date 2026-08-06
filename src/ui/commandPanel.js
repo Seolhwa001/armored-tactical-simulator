@@ -2,7 +2,7 @@
 // ATS PROJECT
 // File      : src/ui/commandPanel.js
 // Sprint    : 3.9.1
-// Revision  : R7
+// Revision  : R8
 // Build     : 2026-08-05
 // Type      : PARTIAL PATCH
 // Purpose   : Observation UI with selectable CPS modes
@@ -1436,9 +1436,7 @@ export function createCommandPanel({
             }
 
             const result =
-              onDeployVehicleSmoke(
-                unit,
-              );
+              onDeployVehicleSmoke();
 
             if (
               !result ||
