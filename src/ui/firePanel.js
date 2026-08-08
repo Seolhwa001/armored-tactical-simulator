@@ -75,6 +75,27 @@ const TURRET_MODE_LABELS = Object.freeze({
   manual: "수동구동",
 });
 
+function createFireUiSnapshot(fireControl) {
+  const procedureState =
+    fireControl?.procedureState ?? null;
+
+  const readyToExecute =
+    procedureState ===
+    FIRE_PROCEDURE_STATES.READY_TO_FIRE;
+
+  return Object.freeze({
+    procedureState,
+    readyToExecute,
+    canIssueFireCommand:
+      Boolean(fireControl?.targetHex) &&
+      (
+        procedureState ===
+          FIRE_PROCEDURE_STATES.TARGET_DESIGNATED ||
+        fireControl?.loading === true
+      ),
+  });
+}
+
 function getAmmunitionLabel(ammunition) {
   if (!ammunition) {
     return "없음";
@@ -856,19 +877,19 @@ export function createFirePanel({
     const fireControl =
       unit.fireControl;
 
+    const fireUi =
+      createFireUiSnapshot(
+        fireControl,
+      );
+
     const procedureState =
-      fireControl.procedureState;
+      fireUi.procedureState;
 
     const canIssueFireCommand =
-      Boolean(
-        fireControl.targetHex,
-      ) &&
-      (
-        procedureState ===
-          FIRE_PROCEDURE_STATES
-            .TARGET_DESIGNATED ||
-        fireControl.loading
-      );
+      fireUi.canIssueFireCommand;
+
+    const readyToExecute =
+      fireUi.readyToExecute;
 
     container.replaceChildren();
 
@@ -1147,9 +1168,7 @@ export function createFirePanel({
         "발사 준비",
         {
           current:
-            procedureState ===
-            FIRE_PROCEDURE_STATES
-              .READY_TO_FIRE,
+            readyToExecute,
 
           disabled: true,
         },
@@ -1161,9 +1180,7 @@ export function createFirePanel({
         "쏴",
         {
           disabled:
-            procedureState !==
-            FIRE_PROCEDURE_STATES
-              .READY_TO_FIRE,
+            !readyToExecute,
 
           onClick: () => {
             const runtimeScenario =
@@ -1218,9 +1235,7 @@ export function createFirePanel({
             FIRE_STATES.ADJUST,
 
           disabled:
-            procedureState !==
-            FIRE_PROCEDURE_STATES
-              .READY_TO_FIRE,
+            !readyToExecute,
 
           onClick: () => {
             const runtimeScenario =
