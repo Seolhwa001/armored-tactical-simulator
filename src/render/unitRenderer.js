@@ -135,6 +135,26 @@ function getBaseVisualRange(unit) {
   return DEFAULT_VISUAL_RANGE;
 }
 
+function getObserverRadius(
+  unit,
+  observer,
+  hexRadius,
+  role = null,
+) {
+  return (
+    hexRadius *
+    nonNegativeOrDefault(
+      observer.range,
+      getObservationVisualRange(
+        unit,
+        {
+          role,
+        },
+      ),
+    )
+  );
+}
+
 function getDetectionConfidence(unit) {
   if (
     !Number.isFinite(
@@ -937,12 +957,14 @@ function drawHexViewArea({
   hexToWorld,
   hexRadius,
   strokeStyle,
+  fillStyle,
 }) {
   if (!(viewHexes instanceof Set) || viewHexes.size === 0) {
     return;
   }
 
   context.save();
+  context.fillStyle = fillStyle;
   context.strokeStyle = strokeStyle;
   context.lineWidth = 2;
   context.lineJoin = "round";
@@ -951,6 +973,17 @@ function drawHexViewArea({
     const [column, row] = key.split(",").map(Number);
     const point = hexToWorld(column, row);
     const corners = getHexCorners(point, hexRadius);
+
+    context.beginPath();
+    corners.forEach((corner, index) => {
+      if (index === 0) {
+        context.moveTo(corner.x, corner.y);
+      } else {
+        context.lineTo(corner.x, corner.y);
+      }
+    });
+    context.closePath();
+    context.fill();
 
     const offsets = row % 2 === 0
       ? HEX_NEIGHBOR_OFFSETS.even
@@ -1034,6 +1067,7 @@ function drawCrewObservationAreas(
       hexToWorld,
       hexRadius,
       strokeStyle: style.stroke,
+      fillStyle: style.fill,
     });
   });
 }
@@ -1083,6 +1117,7 @@ function drawCpsObservationArea(
     hexToWorld,
     hexRadius,
     strokeStyle: "rgba(255, 240, 145, 0.95)",
+    fillStyle: "rgba(255, 240, 145, 0.02)",
   });
 }
 
@@ -1476,20 +1511,8 @@ export function drawUnits({
         return;
       }
 
-      if (
-        unit.id === selectedUnitId ||
-        (developerMode && unit.id === debugSelectedUnitId)
-      ) {
-        drawObservationAreas(
-          context,
-          unit,
-          point,
-          hexRadius,
-          hexToWorld,
-          terrain,
-          smokeAreas,
-        );
-      }
+      // Sprint 4: the legacy colored observation overlay is intentionally
+      // disabled. Visibility is represented by the shared hex View/Fog state.
 
       if (
         unit.id ===
