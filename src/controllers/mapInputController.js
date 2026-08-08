@@ -505,8 +505,15 @@ export function createMapInputController({
         terrain.type
       ];
 
+    const movementCost =
+      Number.isFinite(
+        type.movementCost,
+      )
+        ? type.movementCost
+        : "통행불가";
+
     setMessage(
-      `${type.name} | 고도 ${terrain.elevation}m | 은폐 ${type.concealment}% | 엄폐 ${type.cover}%`,
+      `지형 ${type.name} | 고도 ${terrain.elevation}m | 이동 ${movementCost} | 은폐 ${type.concealment}% | 엄폐 ${type.cover}%`,
     );
 
     return true;
