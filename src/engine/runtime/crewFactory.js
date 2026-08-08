@@ -26,6 +26,31 @@ const COMMANDER_SIGHT_ROTATION_RATE =
 const LOADER_SIDE_OFFSET =
   Math.PI / 2;
 
+export const SPRINT4_OBSERVATION_RANGES_HEX =
+  Object.freeze({
+    COMMANDER_OPEN_VISUAL: 16,
+    COMMANDER_CLOSED_VISUAL: 2,
+    COMMANDER_CPS: 36,
+    GUNNER_MAIN_SIGHT: 40,
+    LOADER_OPEN_VISUAL: 16,
+    LOADER_CLOSED_VISUAL: 2,
+    DRIVER_FORWARD: 2,
+  });
+
+export const SPRINT4_OBSERVATION_FOV =
+  Object.freeze({
+    COMMANDER_VISUAL:
+      Math.PI / 2,
+    COMMANDER_CPS:
+      10 * Math.PI / 180,
+    GUNNER_MAIN_SIGHT:
+      8 * Math.PI / 180,
+    LOADER_VISUAL:
+      Math.PI / 2.2,
+    DRIVER_FORWARD:
+      Math.PI / 2.5,
+  });
+
 function finiteOrDefault(
   value,
   fallback,
@@ -138,10 +163,12 @@ function createCommanderSight(
     );
 
   const fieldOfView =
-    Math.PI / 4;
+    SPRINT4_OBSERVATION_FOV
+      .COMMANDER_CPS;
 
   const range =
-    1.18;
+    SPRINT4_OBSERVATION_RANGES_HEX
+      .COMMANDER_CPS;
 
   const identificationFactor =
     1.2;
@@ -229,10 +256,12 @@ export function createCrewObservation({
             safeHullDirection,
 
           fieldOfView:
-            Math.PI / 2,
+            SPRINT4_OBSERVATION_FOV
+              .COMMANDER_VISUAL,
 
           range:
-            1,
+            SPRINT4_OBSERVATION_RANGES_HEX
+              .COMMANDER_OPEN_VISUAL,
 
           identificationFactor:
             1,
@@ -250,10 +279,12 @@ export function createCrewObservation({
             safeHullDirection,
 
           fieldOfView:
-            Math.PI / 6,
+            SPRINT4_OBSERVATION_FOV
+              .GUNNER_MAIN_SIGHT,
 
           range:
-            0.85,
+            SPRINT4_OBSERVATION_RANGES_HEX
+              .GUNNER_MAIN_SIGHT,
 
           identificationFactor:
             0.9,
@@ -271,10 +302,12 @@ export function createCrewObservation({
             safeHullDirection,
 
           fieldOfView:
-            Math.PI / 2.5,
+            SPRINT4_OBSERVATION_FOV
+              .DRIVER_FORWARD,
 
           range:
-            0.55,
+            SPRINT4_OBSERVATION_RANGES_HEX
+              .DRIVER_FORWARD,
 
           identificationFactor:
             0.45,
@@ -292,10 +325,12 @@ export function createCrewObservation({
             loaderInitialDirection,
 
           fieldOfView:
-            Math.PI / 2.2,
+            SPRINT4_OBSERVATION_FOV
+              .LOADER_VISUAL,
 
           range:
-            0.6,
+            SPRINT4_OBSERVATION_RANGES_HEX
+              .LOADER_OPEN_VISUAL,
 
           identificationFactor:
             0.5,
