@@ -197,6 +197,8 @@ export function createScenarioController({
 
     state.runtimeScenario.smokeAreas =
       [];
+    state.runtimeScenario.terrain =
+      state.terrain;
 
     randomizeUnitPositions();
 
