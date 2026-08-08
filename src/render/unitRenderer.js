@@ -37,7 +37,7 @@ const CREW_OBSERVATION_STYLES =
         "rgba(255, 218, 128, 0.9)",
 
       fill:
-        "rgba(255, 218, 128, 0.025)",
+        "rgba(255, 218, 128, 0.11)",
     },
 
     [CREW_ROLES.GUNNER]: {
@@ -45,7 +45,7 @@ const CREW_OBSERVATION_STYLES =
         "rgba(128, 194, 255, 0.9)",
 
       fill:
-        "rgba(128, 194, 255, 0.025)",
+        "rgba(128, 194, 255, 0.11)",
     },
 
     [CREW_ROLES.DRIVER]: {
@@ -53,7 +53,7 @@ const CREW_OBSERVATION_STYLES =
         "rgba(153, 221, 161, 0.9)",
 
       fill:
-        "rgba(153, 221, 161, 0.025)",
+        "rgba(153, 221, 161, 0.11)",
     },
 
     [CREW_ROLES.LOADER]: {
@@ -61,7 +61,7 @@ const CREW_OBSERVATION_STYLES =
         "rgba(211, 165, 255, 0.9)",
 
       fill:
-        "rgba(211, 165, 255, 0.025)",
+        "rgba(211, 165, 255, 0.11)",
     },
   });
 
@@ -1016,8 +1016,10 @@ function buildObserverView(unit, observer, role, terrain, smokeAreas) {
     direction: observer.direction,
     fieldOfView: finiteOrDefault(observer.fieldOfView, Math.PI / 2),
     maximumRange:
-      getObservationVisualRange(unit, { role }) *
-      nonNegativeOrDefault(observer.range, 1),
+      nonNegativeOrDefault(
+        observer.range,
+        getObservationVisualRange(unit, { role }),
+      ),
     terrain,
     smokeAreas,
   });
@@ -1105,8 +1107,13 @@ function drawCpsObservationArea(
     direction: sight.direction,
     fieldOfView: finiteOrDefault(sight.fieldOfView, Math.PI / 3),
     maximumRange:
-      getObservationVisualRange(unit, { role: "commander-cps" }) *
-      nonNegativeOrDefault(sight.range, 1.18),
+      nonNegativeOrDefault(
+        sight.range,
+        getObservationVisualRange(
+          unit,
+          { role: "commander-cps" },
+        ),
+      ),
     terrain,
     smokeAreas,
   });
@@ -1117,7 +1124,7 @@ function drawCpsObservationArea(
     hexToWorld,
     hexRadius,
     strokeStyle: "rgba(255, 240, 145, 0.95)",
-    fillStyle: "rgba(255, 240, 145, 0.02)",
+    fillStyle: "rgba(255, 240, 145, 0.11)",
   });
 }
 
