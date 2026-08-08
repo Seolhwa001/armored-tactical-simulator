@@ -39,6 +39,11 @@ import {
   setFireProcedureState as setProcedureContractState,
 } from "./fireProcedure.js";
 
+
+import {
+  updateProcedureCoreProgress,
+} from "./procedureCore.js";
+
 export { FIRE_PROCEDURE_STATES };
 
 export const AMMUNITION_TYPES = Object.freeze({
@@ -81,6 +86,98 @@ function setProcedureState(
     procedureState,
     turn,
   );
+}
+
+const DEFAULT_PROCEDURE_PROGRESS_STEP = 1;
+
+function advanceAimingProgress(
+  unit,
+  turn,
+  progressStep =
+    DEFAULT_PROCEDURE_PROGRESS_STEP,
+) {
+  const fireControl =
+    unit.fireControl;
+
+  if (
+    !fireControl ||
+    fireControl.procedureState !==
+      FIRE_PROCEDURE_STATES.AIMING
+  ) {
+    return {
+      changed: false,
+      ready: false,
+      progress: 0,
+    };
+  }
+
+  const core =
+    fireControl.procedure?.core;
+
+  const currentProgress =
+    Number.isFinite(
+      core?.actionProgress,
+    )
+      ? core.actionProgress
+      : 0;
+
+  const nextProgress =
+    Math.min(
+      1,
+      Math.max(
+        0,
+        currentProgress +
+          Math.max(
+            0,
+            Number.isFinite(progressStep)
+              ? progressStep
+              : 0,
+          ),
+      ),
+    );
+
+  if (core) {
+    updateProcedureCoreProgress(
+      core,
+      {
+        turn,
+        actionProgress:
+          nextProgress,
+        pendingAction:
+          "aiming",
+      },
+    );
+  }
+
+  if (nextProgress < 1) {
+    return {
+      changed:
+        nextProgress !==
+        currentProgress,
+      ready: false,
+      progress:
+        nextProgress,
+    };
+  }
+
+  fireControl.aiming =
+    false;
+
+  setProcedureState(
+    unit,
+    FIRE_PROCEDURE_STATES
+      .READY_TO_FIRE,
+    turn,
+  );
+
+  unit.command =
+    "발사 준비";
+
+  return {
+    changed: true,
+    ready: true,
+    progress: 1,
+  };
 }
 
 function resetAimingState(unit) {
@@ -681,11 +778,22 @@ export function issueFireCommand(
         turn,
       );
 
+    if (
+      aimingResult.state ===
+        FIRE_PROCEDURE_STATES.AIMING
+    ) {
+      advanceAimingProgress(
+        unit,
+        turn,
+      );
+    }
+
     return {
       success: true,
       automaticLoading: false,
       usedLoadedRound: true,
-      state: aimingResult.state,
+      state:
+        fireControl.procedureState,
     };
   }
 
@@ -828,6 +936,16 @@ function completeLoading(
       turn,
     );
 
+  if (
+    aimingResult.state ===
+      FIRE_PROCEDURE_STATES.AIMING
+  ) {
+    advanceAimingProgress(
+      unit,
+      turn,
+    );
+  }
+
   return {
     success: true,
 
@@ -910,8 +1028,13 @@ export function updateFireProcedure(
     fireControl.aiming =
       true;
 
-    fireControl.aimStartedTurn =
-      turn;
+    if (
+      fireControl.aimStartedTurn ===
+        null
+    ) {
+      fireControl.aimStartedTurn =
+        turn;
+    }
 
     setProcedureState(
       unit,
@@ -921,43 +1044,32 @@ export function updateFireProcedure(
 
     unit.command =
       "조준";
-
-    return {
-      changed: true,
-
-      state:
-        fireControl.procedureState,
-    };
   }
 
   if (
     fireControl.fireCommandIssued ===
       true &&
     fireControl.procedureState ===
-      FIRE_PROCEDURE_STATES.AIMING &&
-    fireControl.aimStartedTurn !==
-      null &&
-    turn >
-      fireControl.aimStartedTurn
+      FIRE_PROCEDURE_STATES.AIMING
   ) {
-    fireControl.aiming =
-      false;
-
-    setProcedureState(
-      unit,
-      FIRE_PROCEDURE_STATES
-        .READY_TO_FIRE,
-      turn,
-    );
-
-    unit.command =
-      "발사 준비";
+    const aimingProgress =
+      advanceAimingProgress(
+        unit,
+        turn,
+      );
 
     return {
-      changed: true,
+      changed:
+        aimingProgress.changed,
 
       state:
         fireControl.procedureState,
+
+      aimingProgress:
+        aimingProgress.progress,
+
+      ready:
+        aimingProgress.ready,
     };
   }
 
