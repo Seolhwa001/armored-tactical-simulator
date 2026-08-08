@@ -7,6 +7,16 @@
 //             from Detection / Contact implementation.
 // ============================================================
 
+import {
+  PROCEDURE_CORE_STATES,
+  advanceProcedureCoreTurn,
+  beginProcedureCore,
+  cancelProcedureCore,
+  createProcedureCore,
+  prepareProcedureCore,
+  transitionProcedureCore,
+} from "./procedureCore.js";
+
 export const FIRE_PROCEDURE_STATES = Object.freeze({
   STOPPED: "stopped",
   TARGET_DESIGNATED: "target-designated",
@@ -25,6 +35,83 @@ export const TARGET_REFERENCE_SOURCES = Object.freeze({
   CONTACT: "contact",
   TERRAIN: "terrain",
 });
+
+
+function getCoreStateForFireState(state) {
+  switch (state) {
+    case FIRE_PROCEDURE_STATES.STOPPED:
+      return PROCEDURE_CORE_STATES.IDLE;
+
+    case FIRE_PROCEDURE_STATES.TARGET_DESIGNATED:
+    case FIRE_PROCEDURE_STATES.FIRE_COMMAND:
+      return PROCEDURE_CORE_STATES.COMMAND;
+
+    case FIRE_PROCEDURE_STATES.LOADING:
+    case FIRE_PROCEDURE_STATES.TRAVERSING:
+    case FIRE_PROCEDURE_STATES.AIMING:
+    case FIRE_PROCEDURE_STATES.RELOADING:
+    case FIRE_PROCEDURE_STATES.ADJUSTING:
+      return PROCEDURE_CORE_STATES.PREPARE;
+
+    case FIRE_PROCEDURE_STATES.READY_TO_FIRE:
+      return PROCEDURE_CORE_STATES.READY;
+
+    case FIRE_PROCEDURE_STATES.FIRED:
+      return PROCEDURE_CORE_STATES.EXECUTE;
+
+    default:
+      return null;
+  }
+}
+
+function synchronizeProcedureCore(
+  procedure,
+  fireState,
+  turn = null,
+) {
+  const core = procedure?.core;
+  const nextCoreState = getCoreStateForFireState(fireState);
+
+  if (!core || !nextCoreState) {
+    return false;
+  }
+
+  if (core.state === nextCoreState) {
+    if (Number.isFinite(turn)) {
+      advanceProcedureCoreTurn(core, turn);
+    }
+    return true;
+  }
+
+  if (
+    core.state === PROCEDURE_CORE_STATES.IDLE &&
+    nextCoreState === PROCEDURE_CORE_STATES.COMMAND
+  ) {
+    return beginProcedureCore(core, { turn });
+  }
+
+  if (
+    nextCoreState === PROCEDURE_CORE_STATES.PREPARE &&
+    core.state !== PROCEDURE_CORE_STATES.END
+  ) {
+    if (core.state === PROCEDURE_CORE_STATES.IDLE) {
+      beginProcedureCore(core, { turn });
+    }
+
+    return prepareProcedureCore(core, { turn });
+  }
+
+  if (nextCoreState === PROCEDURE_CORE_STATES.IDLE) {
+    advanceProcedureCoreTurn(core, turn);
+    return true;
+  }
+
+  return transitionProcedureCore(
+    core,
+    nextCoreState,
+    { turn },
+  );
+}
 
 function finiteOrNull(value) {
   return Number.isFinite(value) ? value : null;
@@ -155,6 +242,7 @@ export function createFireProcedure({
 } = {}) {
   return {
     state: FIRE_PROCEDURE_STATES.STOPPED,
+    core: createProcedureCore({ turn }),
     startedTurn: null,
     updatedTurn:
       Number.isFinite(turn) ? turn : null,
@@ -198,6 +286,12 @@ export function setFireProcedureState(
     procedure.time.currentTurn = turn;
   }
 
+  synchronizeProcedureCore(
+    procedure,
+    state,
+    turn,
+  );
+
   return true;
 }
 
@@ -231,6 +325,10 @@ export function advanceFireProcedureTurn(
   // clear the target, current state, queue or progress by itself.
   procedure.updatedTurn = turn;
   procedure.time.currentTurn = turn;
+  advanceProcedureCoreTurn(
+    procedure.core,
+    turn,
+  );
   return true;
 }
 
@@ -249,6 +347,19 @@ export function endFireProcedure(
   procedure.targetQueue = [];
   procedure.fireMode = null;
   procedure.lastEndReason = reason;
+
+  if (
+    procedure.core?.state !== PROCEDURE_CORE_STATES.IDLE &&
+    procedure.core?.state !== PROCEDURE_CORE_STATES.END
+  ) {
+    cancelProcedureCore(
+      procedure.core,
+      {
+        turn,
+        reason,
+      },
+    );
+  }
 
   if (Number.isFinite(turn)) {
     procedure.updatedTurn = turn;
