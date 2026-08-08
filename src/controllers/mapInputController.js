@@ -423,9 +423,11 @@ export function createMapInputController({
           hex.column &&
         candidate.row ===
           hex.row &&
+        // Developer rendering may reveal Runtime enemies for inspection,
+        // but it must never grant normal targeting knowledge.
         isUnitVisible(
           candidate,
-          state.developerMode,
+          false,
         ),
     );
   }
@@ -500,20 +502,19 @@ export function createMapInputController({
       return false;
     }
 
-    const type =
-      terrainTypes[
-        terrain.type
-      ];
+    const terrainInformation =
+      getTerrainInformationText(
+        hex,
+      );
 
-    const movementCost =
-      Number.isFinite(
-        type.movementCost,
-      )
-        ? type.movementCost
-        : "통행불가";
+    if (!terrainInformation) {
+      render();
+
+      return false;
+    }
 
     setMessage(
-      `지형 ${type.name} | 고도 ${terrain.elevation}m | 이동 ${movementCost} | 은폐 ${type.concealment}% | 엄폐 ${type.cover}%`,
+      terrainInformation,
     );
 
     return true;
@@ -718,6 +719,43 @@ export function createMapInputController({
     );
   }
 
+  function getTerrainInformationText(
+    hex,
+  ) {
+    const terrain =
+      state.terrain.get(
+        `${hex.column},${hex.row}`,
+      );
+
+    if (!terrain) {
+      return null;
+    }
+
+    const type =
+      terrainTypes[
+        terrain.type
+      ];
+
+    if (!type) {
+      return null;
+    }
+
+    const movementCost =
+      Number.isFinite(
+        type.movementCost,
+      )
+        ? type.movementCost
+        : "통행불가";
+
+    return (
+      `지형 ${type.name} | ` +
+      `고도 ${terrain.elevation}m | ` +
+      `이동 ${movementCost} | ` +
+      `은폐 ${type.concealment}% | ` +
+      `엄폐 ${type.cover}%`
+    );
+  }
+
   function getNormalUnitMessage(
     tappedUnit,
   ) {
@@ -728,11 +766,21 @@ export function createMapInputController({
       tappedUnit.id ===
       playerUnit?.id
     ) {
+      const terrainInformation =
+        getTerrainInformationText(
+          playerUnit,
+        );
+
       return (
         `${playerUnit.name} / ` +
         `${getHealthSummary(
           playerUnit,
-        )}`
+        )}` +
+        (
+          terrainInformation
+            ? ` | ${terrainInformation}`
+            : ""
+        )
       );
     }
 
