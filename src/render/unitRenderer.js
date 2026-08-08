@@ -33,6 +33,7 @@ const DEFAULT_VISUAL_RANGE =
 const CREW_OBSERVATION_STYLES =
   Object.freeze({
     [CREW_ROLES.COMMANDER]: {
+      label: "전차장",
       stroke:
         "rgba(255, 218, 128, 0.9)",
 
@@ -41,6 +42,7 @@ const CREW_OBSERVATION_STYLES =
     },
 
     [CREW_ROLES.GUNNER]: {
+      label: "포수",
       stroke:
         "rgba(128, 194, 255, 0.9)",
 
@@ -49,6 +51,7 @@ const CREW_OBSERVATION_STYLES =
     },
 
     [CREW_ROLES.DRIVER]: {
+      label: "조종수",
       stroke:
         "rgba(153, 221, 161, 0.9)",
 
@@ -57,6 +60,7 @@ const CREW_OBSERVATION_STYLES =
     },
 
     [CREW_ROLES.LOADER]: {
+      label: "탄약수",
       stroke:
         "rgba(211, 165, 255, 0.9)",
 
@@ -1025,9 +1029,122 @@ function buildObserverView(unit, observer, role, terrain, smokeAreas) {
   });
 }
 
+function drawObservationDirectionIndicator({
+  context,
+  originPoint,
+  direction,
+  label,
+  strokeStyle,
+  length = 58,
+}) {
+  if (
+    !originPoint ||
+    !Number.isFinite(direction)
+  ) {
+    return;
+  }
+
+  const end = {
+    x:
+      originPoint.x +
+      Math.cos(direction) * length,
+
+    y:
+      originPoint.y +
+      Math.sin(direction) * length,
+  };
+
+  context.save();
+
+  context.strokeStyle =
+    strokeStyle;
+
+  context.fillStyle =
+    strokeStyle;
+
+  context.lineWidth =
+    3;
+
+  context.beginPath();
+  context.moveTo(
+    originPoint.x,
+    originPoint.y,
+  );
+  context.lineTo(
+    end.x,
+    end.y,
+  );
+  context.stroke();
+
+  const arrowSize = 7;
+  const leftAngle =
+    direction +
+    Math.PI * 0.82;
+  const rightAngle =
+    direction -
+    Math.PI * 0.82;
+
+  context.beginPath();
+  context.moveTo(
+    end.x,
+    end.y,
+  );
+  context.lineTo(
+    end.x +
+      Math.cos(leftAngle) *
+      arrowSize,
+    end.y +
+      Math.sin(leftAngle) *
+      arrowSize,
+  );
+  context.lineTo(
+    end.x +
+      Math.cos(rightAngle) *
+      arrowSize,
+    end.y +
+      Math.sin(rightAngle) *
+      arrowSize,
+  );
+  context.closePath();
+  context.fill();
+
+  context.font =
+    "600 11px system-ui, sans-serif";
+
+  context.textAlign =
+    "center";
+
+  context.textBaseline =
+    "middle";
+
+  context.lineWidth =
+    4;
+
+  context.strokeStyle =
+    "rgba(10, 14, 12, 0.9)";
+
+  context.strokeText(
+    label,
+    end.x,
+    end.y - 14,
+  );
+
+  context.fillStyle =
+    strokeStyle;
+
+  context.fillText(
+    label,
+    end.x,
+    end.y - 14,
+  );
+
+  context.restore();
+}
+
 function drawCrewObservationAreas(
   context,
   unit,
+  point,
   hexRadius,
   hexToWorld,
   terrain,
@@ -1070,6 +1187,18 @@ function drawCrewObservationAreas(
       hexRadius,
       strokeStyle: style.stroke,
       fillStyle: style.fill,
+    });
+
+    drawObservationDirectionIndicator({
+      context,
+      originPoint: point,
+      direction:
+        observer.direction,
+      label:
+        style.label ??
+        crewRole,
+      strokeStyle:
+        style.stroke,
     });
   });
 }
@@ -1126,6 +1255,25 @@ function drawCpsObservationArea(
     strokeStyle: "rgba(255, 240, 145, 0.95)",
     fillStyle: "rgba(255, 240, 145, 0.11)",
   });
+
+  const originPoint =
+    hexToWorld(
+      unit.column,
+      unit.row,
+    );
+
+  drawObservationDirectionIndicator({
+    context,
+    originPoint,
+    direction:
+      sight.direction,
+    label:
+      "CPS",
+    strokeStyle:
+      "rgba(255, 240, 145, 0.95)",
+    length:
+      72,
+  });
 }
 
 function drawObservationAreas(
@@ -1147,6 +1295,7 @@ function drawObservationAreas(
   drawCrewObservationAreas(
     context,
     unit,
+    point,
     hexRadius,
     hexToWorld,
     terrain,
@@ -1518,8 +1667,21 @@ export function drawUnits({
         return;
       }
 
-      // Sprint 4: the legacy colored observation overlay is intentionally
-      // disabled. Visibility is represented by the shared hex View/Fog state.
+      if (
+        unit.side === "friendly" &&
+        unit.id === selectedUnitId &&
+        !unit.destroyed
+      ) {
+        drawObservationAreas(
+          context,
+          unit,
+          point,
+          hexRadius,
+          hexToWorld,
+          terrain,
+          smokeAreas,
+        );
+      }
 
       if (
         unit.id ===
