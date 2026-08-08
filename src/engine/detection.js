@@ -18,6 +18,11 @@ import {
 } from "./mathUtils.js";
 
 import {
+  calculateViewHexes,
+  toHexKey,
+} from "./view.js";
+
+import {
   getSmokeOcclusion,
   prepareActiveSmokeAreas,
 } from "./combat.js";
@@ -880,18 +885,65 @@ function enrichCandidateDiagnostics(
   );
 }
 
+function isCandidateInsideView(
+  observer,
+  enemy,
+  candidate,
+  terrain,
+  smokeAreas,
+) {
+  if (!(terrain instanceof Map)) {
+    return true;
+  }
+
+  const source = candidate.role === "commander-cps"
+    ? observer.crewObservation?.commanderIndependentSight
+    : observer.crewObservation?.observers?.[candidate.role];
+
+  if (!source || !Number.isFinite(source.direction)) {
+    return false;
+  }
+
+  const view = calculateViewHexes({
+    origin: { column: observer.column, row: observer.row },
+    direction: source.direction,
+    fieldOfView: positiveOrDefault(source.fieldOfView,
+      candidate.role === "commander-cps" ? Math.PI / 3 : Math.PI / 2),
+    maximumRange:
+      getObservationVisualRange(observer, { role: candidate.role }) *
+      nonNegativeOrDefault(candidate.range, 1),
+    terrain,
+    smokeAreas,
+  });
+
+  return view.has(toHexKey(enemy.column, enemy.row));
+}
+
 function calculateDetectionStage(
   observer,
   enemy,
   distance,
   turn,
   smokeContext,
+  terrain,
+  smokeAreas,
 ) {
-  const candidates =
+  const directionalCandidates =
     getObservationCandidates(
       observer,
       enemy,
     );
+
+  const candidates = directionalCandidates.filter((candidate) =>
+    isCandidateInsideView(
+      observer,
+      enemy,
+      candidate,
+      terrain,
+      smokeAreas,
+    ),
+  );
+  candidates.diagnostics = directionalCandidates.diagnostics ?? [];
 
   if (
     candidates.length === 0
@@ -1254,9 +1306,11 @@ export function updateDetection(
         !unit.destroyed,
     );
 
+  const smokeAreas = runtimeScenario?.smokeAreas ?? [];
+  const terrain = runtimeScenario?.terrain;
   const smokeContext =
     prepareActiveSmokeAreas(
-      runtimeScenario?.smokeAreas ?? [],
+      smokeAreas,
       turn,
     );
 
@@ -1318,6 +1372,8 @@ export function updateDetection(
               distance,
               turn,
               smokeContext,
+              terrain,
+              smokeAreas,
             );
 
           if (

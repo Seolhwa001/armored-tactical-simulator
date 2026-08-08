@@ -139,15 +139,13 @@ function evaluateLineOfSight({
   const originGroundElevation = Number.isFinite(originTerrain.elevation)
     ? originTerrain.elevation
     : 0;
+  const targetTerrain = terrain.get(toHexKey(target.column, target.row));
+  const targetGroundElevation = Number.isFinite(targetTerrain?.elevation)
+    ? targetTerrain.elevation
+    : originGroundElevation;
   const observerEyeElevation = originGroundElevation + observerHeightMeters;
-  const blockingGroundElevation =
-    originGroundElevation + elevationBlockThresholdMeters;
-
-  // The origin never blocks its own view. The target hex can be seen, but an
-  // intervening ridge 0.5m or more above the vehicle's ground level blocks
-  // everything behind it. observerEyeElevation is retained as the common
-  // observer-height contract for later slope-based LOS refinement.
-  void observerEyeElevation;
+  const targetEyeElevation = targetGroundElevation + observerHeightMeters;
+  const totalSteps = Math.max(1, line.length - 1);
 
   for (let index = 1; index < line.length; index += 1) {
     const hex = line[index];
@@ -166,8 +164,12 @@ function evaluateLineOfSight({
       const elevation = Number.isFinite(terrainHex.elevation)
         ? terrainHex.elevation
         : 0;
+      const progress = index / totalSteps;
+      const sightLineElevation =
+        observerEyeElevation +
+        (targetEyeElevation - observerEyeElevation) * progress;
 
-      if (elevation >= blockingGroundElevation) {
+      if (elevation >= sightLineElevation + elevationBlockThresholdMeters) {
         return false;
       }
     }
