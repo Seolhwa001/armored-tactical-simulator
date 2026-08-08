@@ -1177,6 +1177,10 @@ function drawCrewObservationAreas(
   hexToWorld,
   terrain,
   smokeAreas,
+  {
+    drawView = true,
+    drawDirection = true,
+  } = {},
 ) {
   if (
     unit.side !== "friendly" ||
@@ -1202,6 +1206,7 @@ function drawCrewObservationAreas(
     }
 
     if (
+      drawView &&
       observer.observing === true
     ) {
       drawHexViewArea({
@@ -1220,26 +1225,28 @@ function drawCrewObservationAreas(
       });
     }
 
-    const roleLengths = {
-      [CREW_ROLES.COMMANDER]: 82,
-      [CREW_ROLES.GUNNER]: 98,
-      [CREW_ROLES.LOADER]: 114,
-      [CREW_ROLES.DRIVER]: 130,
-    };
+    if (drawDirection) {
+      const roleLengths = {
+        [CREW_ROLES.COMMANDER]: 82,
+        [CREW_ROLES.GUNNER]: 98,
+        [CREW_ROLES.LOADER]: 114,
+        [CREW_ROLES.DRIVER]: 130,
+      };
 
-    drawObservationDirectionIndicator({
-      context,
-      originPoint: point,
-      direction:
-        observer.direction,
-      label:
-        style.label ??
-        crewRole,
-      strokeStyle:
-        style.stroke,
-      length:
-        roleLengths[crewRole] ?? 92,
-    });
+      drawObservationDirectionIndicator({
+        context,
+        originPoint: point,
+        direction:
+          observer.direction,
+        label:
+          style.label ??
+          crewRole,
+        strokeStyle:
+          style.stroke,
+        length:
+          roleLengths[crewRole] ?? 92,
+      });
+    }
   });
 }
 
@@ -1262,6 +1269,10 @@ function drawCpsObservationArea(
   hexToWorld,
   terrain,
   smokeAreas,
+  {
+    drawView = true,
+    drawDirection = true,
+  } = {},
 ) {
   if (!isCpsDisplayActive(unit) || !(terrain instanceof Map)) {
     return;
@@ -1287,33 +1298,37 @@ function drawCpsObservationArea(
     smokeAreas,
   });
 
-  drawHexViewArea({
-    context,
-    viewHexes,
-    hexToWorld,
-    hexRadius,
-    strokeStyle: "rgba(255, 240, 145, 0.95)",
-    fillStyle: "rgba(255, 240, 145, 0.11)",
-  });
+  if (drawView) {
+    drawHexViewArea({
+      context,
+      viewHexes,
+      hexToWorld,
+      hexRadius,
+      strokeStyle: "rgba(255, 240, 145, 0.95)",
+      fillStyle: "rgba(255, 240, 145, 0.11)",
+    });
+  }
 
-  const originPoint =
-    hexToWorld(
-      unit.column,
-      unit.row,
-    );
+  if (drawDirection) {
+    const originPoint =
+      hexToWorld(
+        unit.column,
+        unit.row,
+      );
 
-  drawObservationDirectionIndicator({
-    context,
-    originPoint,
-    direction:
-      sight.direction,
-    label:
-      "CPS",
-    strokeStyle:
-      "rgba(255, 240, 145, 0.95)",
-    length:
-      72,
-  });
+    drawObservationDirectionIndicator({
+      context,
+      originPoint,
+      direction:
+        sight.direction,
+      label:
+        "CPS",
+      strokeStyle:
+        "rgba(255, 240, 145, 0.95)",
+      length:
+        146,
+    });
+  }
 }
 
 function drawObservationAreas(
@@ -1324,6 +1339,7 @@ function drawObservationAreas(
   hexToWorld,
   terrain,
   smokeAreas,
+  options = {},
 ) {
   if (
     unit.side !== "friendly" ||
@@ -1340,6 +1356,7 @@ function drawObservationAreas(
     hexToWorld,
     terrain,
     smokeAreas,
+    options,
   );
 
   drawCpsObservationArea(
@@ -1349,6 +1366,7 @@ function drawObservationAreas(
     hexToWorld,
     terrain,
     smokeAreas,
+    options,
   );
 }
 
@@ -1690,6 +1708,10 @@ export function drawSelectedObservationOverlay({
     hexToWorld,
     terrain,
     smokeAreas,
+    {
+      drawView: false,
+      drawDirection: true,
+    },
   );
 }
 
@@ -1757,6 +1779,26 @@ export function drawUnits({
         )
       ) {
         return;
+      }
+
+      if (
+        unit.side === "friendly" &&
+        unit.id === selectedUnitId &&
+        !unit.destroyed
+      ) {
+        drawObservationAreas(
+          context,
+          unit,
+          point,
+          hexRadius,
+          hexToWorld,
+          terrain,
+          smokeAreas,
+          {
+            drawView: true,
+            drawDirection: false,
+          },
+        );
       }
 
       if (
