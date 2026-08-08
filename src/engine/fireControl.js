@@ -962,6 +962,7 @@ function completeLoading(
 export function updateFireProcedure(
   unit,
   turn,
+  options = {},
 ) {
   if (
     unit.destroyed ||
@@ -974,6 +975,40 @@ export function updateFireProcedure(
 
   const fireControl =
     unit.fireControl;
+
+  fireControl.procedureDiagnostics = {
+    turn,
+    moving:
+      options.moving === true,
+    targetPresent:
+      Boolean(
+        fireControl.targetHex,
+      ),
+    fireCommandIssued:
+      fireControl.fireCommandIssued ===
+        true,
+    turretAligned:
+      isTurretAligned(unit),
+    procedureState:
+      fireControl.procedureState,
+    coreState:
+      fireControl.procedure?.core?.state ??
+      null,
+    coreProgress:
+      Number.isFinite(
+        fireControl.procedure?.core
+          ?.actionProgress,
+      )
+        ? fireControl.procedure.core
+            .actionProgress
+        : 0,
+    aiming:
+      fireControl.aiming === true,
+    loading:
+      fireControl.loading === true,
+    loaded:
+      fireControl.loaded === true,
+  };
 
   advanceFireProcedureTurn(
     fireControl.procedure,
@@ -1072,6 +1107,31 @@ export function updateFireProcedure(
         aimingProgress.ready,
     };
   }
+
+  fireControl.procedureDiagnostics = {
+    ...fireControl.procedureDiagnostics,
+    turretAligned:
+      isTurretAligned(unit),
+    procedureState:
+      fireControl.procedureState,
+    coreState:
+      fireControl.procedure?.core?.state ??
+      null,
+    coreProgress:
+      Number.isFinite(
+        fireControl.procedure?.core
+          ?.actionProgress,
+      )
+        ? fireControl.procedure.core
+            .actionProgress
+        : 0,
+    aiming:
+      fireControl.aiming === true,
+    loading:
+      fireControl.loading === true,
+    loaded:
+      fireControl.loaded === true,
+  };
 
   return {
     changed: false,

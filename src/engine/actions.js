@@ -2093,6 +2093,9 @@ export function processPersistentActions(
           .updateFireProcedure?.(
             unit,
             turn,
+            {
+              moving,
+            },
           );
 
         synchronizeCrewObservationDirections(
