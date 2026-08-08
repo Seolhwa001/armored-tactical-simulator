@@ -1035,7 +1035,8 @@ function drawObservationDirectionIndicator({
   direction,
   label,
   strokeStyle,
-  length = 58,
+  length = 92,
+  originOffset = 0,
 }) {
   if (
     !originPoint ||
@@ -1044,13 +1045,29 @@ function drawObservationDirectionIndicator({
     return;
   }
 
-  const end = {
+  const perpendicular =
+    direction +
+    Math.PI / 2;
+
+  const start = {
     x:
       originPoint.x +
-      Math.cos(direction) * length,
+      Math.cos(perpendicular) *
+      originOffset,
 
     y:
       originPoint.y +
+      Math.sin(perpendicular) *
+      originOffset,
+  };
+
+  const end = {
+    x:
+      start.x +
+      Math.cos(direction) * length,
+
+    y:
+      start.y +
       Math.sin(direction) * length,
   };
 
@@ -1067,8 +1084,8 @@ function drawObservationDirectionIndicator({
 
   context.beginPath();
   context.moveTo(
-    originPoint.x,
-    originPoint.y,
+    start.x,
+    start.y,
   );
   context.lineTo(
     end.x,
@@ -1123,10 +1140,30 @@ function drawObservationDirectionIndicator({
   context.strokeStyle =
     "rgba(10, 14, 12, 0.9)";
 
+  const labelY =
+    end.y - 16;
+
+  const labelWidth =
+    Math.max(
+      34,
+      context.measureText(label).width +
+      12,
+    );
+
+  context.fillStyle =
+    "rgba(8, 12, 10, 0.82)";
+
+  context.fillRect(
+    end.x - labelWidth / 2,
+    labelY - 9,
+    labelWidth,
+    18,
+  );
+
   context.strokeText(
     label,
     end.x,
-    end.y - 14,
+    labelY,
   );
 
   context.fillStyle =
@@ -1135,7 +1172,7 @@ function drawObservationDirectionIndicator({
   context.fillText(
     label,
     end.x,
-    end.y - 14,
+    labelY,
   );
 
   context.restore();
@@ -1168,26 +1205,36 @@ function drawCrewObservationAreas(
       !style ||
       !observer ||
       observer.enabled === false ||
-      observer.observing !== true ||
       !Number.isFinite(observer.direction)
     ) {
       return;
     }
 
-    drawHexViewArea({
-      context,
-      viewHexes: buildObserverView(
-        unit,
-        observer,
-        crewRole,
-        terrain,
-        smokeAreas,
-      ),
-      hexToWorld,
-      hexRadius,
-      strokeStyle: style.stroke,
-      fillStyle: style.fill,
-    });
+    if (
+      observer.observing === true
+    ) {
+      drawHexViewArea({
+        context,
+        viewHexes: buildObserverView(
+          unit,
+          observer,
+          crewRole,
+          terrain,
+          smokeAreas,
+        ),
+        hexToWorld,
+        hexRadius,
+        strokeStyle: style.stroke,
+        fillStyle: style.fill,
+      });
+    }
+
+    const roleOffsets = {
+      [CREW_ROLES.COMMANDER]: -18,
+      [CREW_ROLES.GUNNER]: -6,
+      [CREW_ROLES.LOADER]: 6,
+      [CREW_ROLES.DRIVER]: 18,
+    };
 
     drawObservationDirectionIndicator({
       context,
@@ -1199,6 +1246,8 @@ function drawCrewObservationAreas(
         crewRole,
       strokeStyle:
         style.stroke,
+      originOffset:
+        roleOffsets[crewRole] ?? 0,
     });
   });
 }
