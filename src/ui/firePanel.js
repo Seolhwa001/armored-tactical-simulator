@@ -24,6 +24,11 @@ import {
   DIRECTED_ACTION_STATES,
 } from "../engine/actions.js";
 
+
+import {
+  PROCEDURE_CORE_STATES,
+} from "../engine/procedureCore.js";
+
 import {
   UNIT_ACTIONS,
 } from "../engine/constants/actionConstants.js";
@@ -41,6 +46,15 @@ const AMMUNITION_LABELS = Object.freeze({
   [AMMUNITION_TYPES.HEAT]: "대탄",
   [AMMUNITION_TYPES.CANISTER]: "벌집탄",
   [AMMUNITION_TYPES.SMOKE]: "연막탄",
+});
+
+const PROCEDURE_CORE_LABELS = Object.freeze({
+  [PROCEDURE_CORE_STATES.IDLE]: "대기",
+  [PROCEDURE_CORE_STATES.COMMAND]: "명령",
+  [PROCEDURE_CORE_STATES.PREPARE]: "준비",
+  [PROCEDURE_CORE_STATES.READY]: "준비 완료",
+  [PROCEDURE_CORE_STATES.EXECUTE]: "실행",
+  [PROCEDURE_CORE_STATES.END]: "종료",
 });
 
 const PROCEDURE_LABELS = Object.freeze({
@@ -276,6 +290,22 @@ function createStatusPanel(
     ] ??
     fireControl.procedureState;
 
+
+  const procedureCore =
+    fireControl.procedure?.core ?? null;
+
+  const procedureCoreLabel =
+    PROCEDURE_CORE_LABELS[
+      procedureCore?.state
+    ] ??
+    procedureCore?.state ??
+    "없음";
+
+  const procedureCoreProgress =
+    Number.isFinite(procedureCore?.actionProgress)
+      ? `${Math.round(procedureCore.actionProgress * 100)}%`
+      : "-";
+
   const chamberStatus =
     fireControl.loaded
       ? getAmmunitionLabel(
@@ -305,6 +335,14 @@ function createStatusPanel(
     createStatusRow(
       "절차",
       procedure,
+    ),
+    createStatusRow(
+      "Core 단계",
+      procedureCoreLabel,
+    ),
+    createStatusRow(
+      "Core 진행도",
+      procedureCoreProgress,
     ),
     createStatusRow(
       "현재 장전탄",
