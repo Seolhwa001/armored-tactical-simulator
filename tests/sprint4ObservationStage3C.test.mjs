@@ -47,7 +47,7 @@ assert.ok(
 
 assert.ok(
   renderer.includes(
-    "unit.id === selectedUnitId",
+    "candidate.id === selectedUnitId",
   ),
   "Observation overlays should be limited to the selected unit.",
 );

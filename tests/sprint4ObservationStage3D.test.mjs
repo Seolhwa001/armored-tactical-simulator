@@ -35,9 +35,15 @@ assert.equal(
   "Target lookup must not use developerMode visibility.",
 );
 
-assert.ok(
+assert.equal(
   renderer.includes("originOffset"),
-  "Crew direction lines need separated origins.",
+  false,
+  "Crew direction lines must start from the vehicle center.",
+);
+
+assert.ok(
+  renderer.includes("[CREW_ROLES.COMMANDER]: 82"),
+  "Crew direction overlap should be reduced by line length, not origin displacement.",
 );
 
 assert.ok(
