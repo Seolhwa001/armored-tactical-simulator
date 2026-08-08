@@ -184,6 +184,9 @@ function evaluateCrewObserver(
     role:
       observer.role,
 
+    direction,
+    fieldOfView,
+
     range:
       nonNegativeOrDefault(
         observer.range,
@@ -243,6 +246,9 @@ function evaluateCommanderSight(
   return {
     role:
       "commander-cps",
+
+    direction,
+    fieldOfView,
 
     range:
       nonNegativeOrDefault(
@@ -631,6 +637,8 @@ function evaluateDetectionCandidate(
   turn,
   observation,
   smokeContext,
+  terrain,
+  smokeAreas,
 ) {
   const visualRange =
     getObservationVisualRange(
@@ -643,6 +651,54 @@ function evaluateDetectionCandidate(
       observer,
       visualRange,
     );
+
+  if (terrain instanceof Map) {
+    const viewHexes = calculateViewHexes({
+      origin: {
+        column: observer.column,
+        row: observer.row,
+      },
+      direction: observation.direction,
+      fieldOfView: observation.fieldOfView,
+      maximumRange:
+        nonNegativeOrDefault(
+          observation.range,
+          visualRange,
+        ),
+      terrain,
+      smokeAreas,
+    });
+
+    if (!viewHexes.has(toHexKey(enemy.column, enemy.row))) {
+      return {
+        stage: DETECTION_STAGES.HIDDEN,
+        role: observation.role,
+        effectiveVisualRange: 0,
+        effectiveIdentificationRange: 0,
+        visualRange,
+        identificationRange,
+        observerRange:
+          nonNegativeOrDefault(
+            observation.range,
+            DEFAULT_OBSERVER_RANGE,
+          ),
+        identificationFactor:
+          nonNegativeOrDefault(
+            observation.identificationFactor,
+            DEFAULT_IDENTIFICATION_FACTOR,
+          ),
+        concealmentPenalty: 0,
+        baseEffectiveVisualRange: 0,
+        baseEffectiveIdentificationRange: 0,
+        smokeOcclusion: {
+          blocksOpticalSight: false,
+          visualRangeFactor: 1,
+          identificationRangeFactor: 1,
+        },
+        viewBlocked: true,
+      };
+    }
+  }
 
   const observerRange =
     nonNegativeOrDefault(
@@ -666,14 +722,17 @@ function evaluateDetectionCandidate(
   const baseEffectiveVisualRange =
     Math.max(
       0,
-      visualRange * observerRange -
+      observerRange -
         concealmentPenalty,
     );
 
   const baseEffectiveIdentificationRange =
     Math.max(
       0,
-      identificationRange * observerRange *
+      Math.min(
+        observerRange,
+        identificationRange,
+      ) *
         identificationFactor -
         concealmentPenalty,
     );
@@ -885,40 +944,6 @@ function enrichCandidateDiagnostics(
   );
 }
 
-function isCandidateInsideView(
-  observer,
-  enemy,
-  candidate,
-  terrain,
-  smokeAreas,
-) {
-  if (!(terrain instanceof Map)) {
-    return true;
-  }
-
-  const source = candidate.role === "commander-cps"
-    ? observer.crewObservation?.commanderIndependentSight
-    : observer.crewObservation?.observers?.[candidate.role];
-
-  if (!source || !Number.isFinite(source.direction)) {
-    return false;
-  }
-
-  const view = calculateViewHexes({
-    origin: { column: observer.column, row: observer.row },
-    direction: source.direction,
-    fieldOfView: positiveOrDefault(source.fieldOfView,
-      candidate.role === "commander-cps" ? Math.PI / 3 : Math.PI / 2),
-    maximumRange:
-      getObservationVisualRange(observer, { role: candidate.role }) *
-      nonNegativeOrDefault(candidate.range, 1),
-    terrain,
-    smokeAreas,
-  });
-
-  return view.has(toHexKey(enemy.column, enemy.row));
-}
-
 function calculateDetectionStage(
   observer,
   enemy,
@@ -928,22 +953,11 @@ function calculateDetectionStage(
   terrain,
   smokeAreas,
 ) {
-  const directionalCandidates =
+  const candidates =
     getObservationCandidates(
       observer,
       enemy,
     );
-
-  const candidates = directionalCandidates.filter((candidate) =>
-    isCandidateInsideView(
-      observer,
-      enemy,
-      candidate,
-      terrain,
-      smokeAreas,
-    ),
-  );
-  candidates.diagnostics = directionalCandidates.diagnostics ?? [];
 
   if (
     candidates.length === 0
@@ -992,6 +1006,8 @@ function calculateDetectionStage(
           turn,
           candidate,
           smokeContext,
+          terrain,
+          smokeAreas,
         ),
     );
 
@@ -1306,11 +1322,9 @@ export function updateDetection(
         !unit.destroyed,
     );
 
-  const smokeAreas = runtimeScenario?.smokeAreas ?? [];
-  const terrain = runtimeScenario?.terrain;
   const smokeContext =
     prepareActiveSmokeAreas(
-      smokeAreas,
+      runtimeScenario?.smokeAreas ?? [],
       turn,
     );
 
@@ -1372,8 +1386,8 @@ export function updateDetection(
               distance,
               turn,
               smokeContext,
-              terrain,
-              smokeAreas,
+              runtimeScenario?.terrain,
+              runtimeScenario?.smokeAreas ?? [],
             );
 
           if (
