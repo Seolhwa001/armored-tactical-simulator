@@ -812,6 +812,8 @@ drawFogLayer,
 
 drawDynamicLayer,
 
+drawOverlayLayer = null,
+
 now = performance.now(),
 
 }) {
@@ -938,6 +940,71 @@ context.drawImage(
   0,  
   0,  
 );  
+
+if (
+  typeof drawOverlayLayer ===
+  "function"
+) {
+  context.setTransform(
+    ratio,
+    0,
+    0,
+    ratio,
+    0,
+    0,
+  );
+
+  context.save();
+
+  context.translate(
+    camera.x,
+    camera.y,
+  );
+
+  context.scale(
+    camera.zoom,
+    camera.zoom,
+  );
+
+  const overlayBounds =
+    getVisibleWorldBounds(
+      width,
+      height,
+      camera,
+      hexRadius * 3,
+    );
+
+  drawOverlayLayer({
+    context,
+    bounds:
+      overlayBounds,
+    now,
+    hexRadius,
+
+    hexToWorld: (
+      column,
+      row,
+    ) =>
+      hexToWorld(
+        column,
+        row,
+        hexRadius,
+      ),
+
+    isPointVisible,
+  });
+
+  context.restore();
+
+  context.setTransform(
+    1,
+    0,
+    0,
+    1,
+    0,
+    0,
+  );
+}
 
 
 

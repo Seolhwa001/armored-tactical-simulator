@@ -1036,7 +1036,6 @@ function drawObservationDirectionIndicator({
   label,
   strokeStyle,
   length = 92,
-  originOffset = 0,
 }) {
   if (
     !originPoint ||
@@ -1045,20 +1044,12 @@ function drawObservationDirectionIndicator({
     return;
   }
 
-  const perpendicular =
-    direction +
-    Math.PI / 2;
-
   const start = {
     x:
-      originPoint.x +
-      Math.cos(perpendicular) *
-      originOffset,
+      originPoint.x,
 
     y:
-      originPoint.y +
-      Math.sin(perpendicular) *
-      originOffset,
+      originPoint.y,
   };
 
   const end = {
@@ -1229,11 +1220,11 @@ function drawCrewObservationAreas(
       });
     }
 
-    const roleOffsets = {
-      [CREW_ROLES.COMMANDER]: -18,
-      [CREW_ROLES.GUNNER]: -6,
-      [CREW_ROLES.LOADER]: 6,
-      [CREW_ROLES.DRIVER]: 18,
+    const roleLengths = {
+      [CREW_ROLES.COMMANDER]: 82,
+      [CREW_ROLES.GUNNER]: 98,
+      [CREW_ROLES.LOADER]: 114,
+      [CREW_ROLES.DRIVER]: 130,
     };
 
     drawObservationDirectionIndicator({
@@ -1246,8 +1237,8 @@ function drawCrewObservationAreas(
         crewRole,
       strokeStyle:
         style.stroke,
-      originOffset:
-        roleOffsets[crewRole] ?? 0,
+      length:
+        roleLengths[crewRole] ?? 92,
     });
   });
 }
@@ -1650,6 +1641,58 @@ function drawDetectedUnitIcon(
 
   context.restore();
 }
+export function drawSelectedObservationOverlay({
+  context,
+  units,
+  selectedUnitId,
+  hexRadius,
+  hexToWorld,
+  bounds,
+  isPointVisible,
+  terrain,
+  smokeAreas = [],
+}) {
+  const unit =
+    (Array.isArray(units)
+      ? units
+      : []
+    ).find(
+      (candidate) =>
+        candidate.side === "friendly" &&
+        candidate.id === selectedUnitId &&
+        !candidate.destroyed,
+    );
+
+  if (!unit) {
+    return;
+  }
+
+  const point =
+    hexToWorld(
+      unit.column,
+      unit.row,
+    );
+
+  if (
+    !isPointVisible(
+      point,
+      bounds,
+    )
+  ) {
+    return;
+  }
+
+  drawObservationAreas(
+    context,
+    unit,
+    point,
+    hexRadius,
+    hexToWorld,
+    terrain,
+    smokeAreas,
+  );
+}
+
 export function drawUnits({
   context,
   units,
@@ -1714,22 +1757,6 @@ export function drawUnits({
         )
       ) {
         return;
-      }
-
-      if (
-        unit.side === "friendly" &&
-        unit.id === selectedUnitId &&
-        !unit.destroyed
-      ) {
-        drawObservationAreas(
-          context,
-          unit,
-          point,
-          hexRadius,
-          hexToWorld,
-          terrain,
-          smokeAreas,
-        );
       }
 
       if (
