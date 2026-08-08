@@ -72,6 +72,7 @@ import {
 } from "./render/mapRenderer.js";
 
 import {
+  drawSelectedObservationOverlay,
   drawUnits,
 } from "./render/unitRenderer.js";
 
@@ -576,6 +577,25 @@ function render(
         ...renderer,
         effectState:
           state.effects,
+      });
+    },
+
+    drawOverlayLayer(renderer) {
+      drawSelectedObservationOverlay({
+        ...renderer,
+
+        units:
+          getUnits(),
+
+        selectedUnitId:
+          state.selectedUnitId,
+
+        terrain:
+          state.terrain,
+
+        smokeAreas:
+          state.runtimeScenario
+            ?.smokeAreas ?? [],
       });
     },
   });
