@@ -31,18 +31,15 @@ export const FIRE_STATES = Object.freeze({
   ADJUST: "adjust",
 });
 
-export const FIRE_PROCEDURE_STATES = Object.freeze({
-  STOPPED: "stopped",
-  TARGET_DESIGNATED: "target-designated",
-  FIRE_COMMAND: "fire-command",
-  LOADING: "loading",
-  TRAVERSING: "traversing",
-  AIMING: "aiming",
-  READY_TO_FIRE: "ready-to-fire",
-  FIRED: "fired",
-  RELOADING: "reloading",
-  ADJUSTING: "adjusting",
-});
+import {
+  FIRE_PROCEDURE_STATES,
+  advanceFireProcedureTurn,
+  createFireProcedure,
+  endFireProcedure,
+  setFireProcedureState as setProcedureContractState,
+} from "./fireProcedure.js";
+
+export { FIRE_PROCEDURE_STATES };
 
 export const AMMUNITION_TYPES = Object.freeze({
   APFSDS: "apfsds",
@@ -72,15 +69,18 @@ function setProcedureState(
   procedureState,
   turn = null,
 ) {
-  if (!unit.fireControl) {
+  const procedure =
+    unit.fireControl?.procedure;
+
+  if (!procedure) {
     return;
   }
 
-  unit.fireControl.procedureState =
-    procedureState;
-
-  unit.fireControl.procedureTurn =
-    turn;
+  setProcedureContractState(
+    procedure,
+    procedureState,
+    turn,
+  );
 }
 
 function resetAimingState(unit) {
@@ -257,15 +257,14 @@ function beginAimingOrTraverse(
 }
 
 export function createFireControl() {
-  return {
+  const procedure =
+    createFireProcedure();
+
+  const fireControl = {
     state:
       FIRE_STATES.STOPPED,
 
-    procedureState:
-      FIRE_PROCEDURE_STATES.STOPPED,
-
-    procedureTurn:
-      null,
+    procedure,
 
     ammunition:
       AMMUNITION_TYPES.APFSDS,
@@ -331,6 +330,43 @@ export function createFireControl() {
       lastUpdatedTurn: null,
     },
   };
+
+  // Legacy accessors preserve Sprint 3.9.x callers while the single
+  // Source of Truth moves to fireControl.procedure.
+  Object.defineProperties(fireControl, {
+    procedureState: {
+      enumerable: true,
+      configurable: false,
+      get() {
+        return procedure.state;
+      },
+      set(value) {
+        setProcedureContractState(
+          procedure,
+          value,
+          procedure.updatedTurn,
+        );
+      },
+    },
+
+    procedureTurn: {
+      enumerable: true,
+      configurable: false,
+      get() {
+        return procedure.updatedTurn;
+      },
+      set(value) {
+        if (Number.isFinite(value)) {
+          advanceFireProcedureTurn(
+            procedure,
+            value,
+          );
+        }
+      },
+    },
+  });
+
+  return fireControl;
 }
 
 export function selectAmmunition(
@@ -820,6 +856,11 @@ export function updateFireProcedure(
 
   const fireControl =
     unit.fireControl;
+
+  advanceFireProcedureTurn(
+    fireControl.procedure,
+    turn,
+  );
 
   if (
     fireControl.loading &&
@@ -1633,9 +1674,10 @@ export function ceaseFire(unit) {
 
   resetAimingState(unit);
 
-  setProcedureState(
-    unit,
-    FIRE_PROCEDURE_STATES.STOPPED,
+  endFireProcedure(
+    fireControl.procedure,
+    "cease-fire",
+    fireControl.procedureTurn,
   );
 
   clearFireAction(unit);
