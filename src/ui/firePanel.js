@@ -353,6 +353,34 @@ function createStatusPanel(
       procedureCoreProgress,
     ),
     createStatusRow(
+      "진단 · 이동",
+      fireControl.procedureDiagnostics
+        ?.moving
+        ? "YES"
+        : "NO",
+    ),
+    createStatusRow(
+      "진단 · 포탑정렬",
+      fireControl.procedureDiagnostics
+        ?.turretAligned
+        ? "YES"
+        : "NO",
+    ),
+    createStatusRow(
+      "진단 · 명령",
+      fireControl.procedureDiagnostics
+        ?.fireCommandIssued
+        ? "YES"
+        : "NO",
+    ),
+    createStatusRow(
+      "진단 · 표적",
+      fireControl.procedureDiagnostics
+        ?.targetPresent
+        ? "YES"
+        : "NO",
+    ),
+    createStatusRow(
       "현재 장전탄",
       chamberStatus,
     ),
