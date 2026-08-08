@@ -26,8 +26,8 @@ import {
 
 
 import {
-  PROCEDURE_CORE_STATES,
-} from "../engine/procedureCore.js";
+  createProcedureViewModel,
+} from "../engine/procedureViewModel.js";
 
 import {
   UNIT_ACTIONS,
@@ -46,15 +46,6 @@ const AMMUNITION_LABELS = Object.freeze({
   [AMMUNITION_TYPES.HEAT]: "대탄",
   [AMMUNITION_TYPES.CANISTER]: "벌집탄",
   [AMMUNITION_TYPES.SMOKE]: "연막탄",
-});
-
-const PROCEDURE_CORE_LABELS = Object.freeze({
-  [PROCEDURE_CORE_STATES.IDLE]: "대기",
-  [PROCEDURE_CORE_STATES.COMMAND]: "명령",
-  [PROCEDURE_CORE_STATES.PREPARE]: "준비",
-  [PROCEDURE_CORE_STATES.READY]: "준비 완료",
-  [PROCEDURE_CORE_STATES.EXECUTE]: "실행",
-  [PROCEDURE_CORE_STATES.END]: "종료",
 });
 
 const PROCEDURE_LABELS = Object.freeze({
@@ -291,20 +282,16 @@ function createStatusPanel(
     fireControl.procedureState;
 
 
-  const procedureCore =
-    fireControl.procedure?.core ?? null;
+  const procedureView =
+    createProcedureViewModel(
+      fireControl,
+    );
 
   const procedureCoreLabel =
-    PROCEDURE_CORE_LABELS[
-      procedureCore?.state
-    ] ??
-    procedureCore?.state ??
-    "없음";
+    procedureView.coreLabel;
 
   const procedureCoreProgress =
-    Number.isFinite(procedureCore?.actionProgress)
-      ? `${Math.round(procedureCore.actionProgress * 100)}%`
-      : "-";
+    `${procedureView.coreProgressPercent}%`;
 
   const chamberStatus =
     fireControl.loaded
@@ -600,7 +587,9 @@ export function createFirePanel({
   onVisibilityChanged,
   onMessage,
 }) {
-  const procedure = {
+  // UI-only transient command input.
+  // This object is not Runtime Fire Procedure state.
+  const commandDraft = {
     ammunition:
       AMMUNITION_TYPES.APFSDS,
 
@@ -643,18 +632,18 @@ export function createFirePanel({
     const fireControl =
       unit.fireControl;
 
-    procedure.ammunition =
+    commandDraft.ammunition =
       fireControl?.ammunition ??
-      procedure.ammunition;
+      commandDraft.ammunition;
 
-    procedure.targetHex =
+    commandDraft.targetHex =
       fireControl?.targetHex
         ? {
             ...fireControl.targetHex,
           }
         : null;
 
-    procedure.targetUnitId =
+    commandDraft.targetUnitId =
       fireControl?.targetUnitId ??
       null;
   }
@@ -663,15 +652,15 @@ export function createFirePanel({
     const unit =
       getSelectedUnit();
 
-    procedure.ammunition =
+    commandDraft.ammunition =
       unit?.fireControl
         ?.ammunition ??
       AMMUNITION_TYPES.APFSDS;
 
-    procedure.targetHex =
+    commandDraft.targetHex =
       null;
 
-    procedure.targetUnitId =
+    commandDraft.targetUnitId =
       null;
   }
 
@@ -998,10 +987,10 @@ export function createFirePanel({
       "fire-target-status";
 
     targetStatus.textContent =
-      procedure.targetHex
+      commandDraft.targetHex
         ? (
-            `목표: ${procedure.targetHex.column}, ` +
-            `${procedure.targetHex.row}`
+            `목표: ${commandDraft.targetHex.column}, ` +
+            `${commandDraft.targetHex.row}`
           )
         : "목표: 미지정";
 
@@ -1375,9 +1364,9 @@ export function createFirePanel({
         ...procedure,
 
         targetHex:
-          procedure.targetHex
+          commandDraft.targetHex
             ? {
-                ...procedure.targetHex,
+                ...commandDraft.targetHex,
               }
             : null,
       };
